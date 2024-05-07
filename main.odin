@@ -61,7 +61,7 @@ run :: proc() -> Error {
 	for {
 		res := mio.submit_and_wait(&ring.underlying, 1)
 		if res < 0 {
-			log.fatalf("unable to submit sqes, err: %v", libc.strerror(libc.int(-res)))
+			log.fatalf("unable to submit sqes, err: (%d) %v", -res, libc.strerror(libc.int(-res)))
 		}
 
 		count := mio.peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
