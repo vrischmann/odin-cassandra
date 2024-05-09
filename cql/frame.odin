@@ -112,7 +112,7 @@ Envelope_Body_Build_Error :: enum {
 	Bytes_Too_Long,
 }
 
-envelope_body_append_int :: proc(buf: ^[dynamic]u8, n: i32) -> (err: Error) {
+envelope_body_append_int :: proc(buf: ^[dynamic]byte, n: i32) -> (err: Error) {
 	tmp_buf: [4]byte = {}
 	endian.put_i32(tmp_buf[:], .Big, n)
 
@@ -121,7 +121,7 @@ envelope_body_append_int :: proc(buf: ^[dynamic]u8, n: i32) -> (err: Error) {
 	return nil
 }
 
-envelope_body_append_long :: proc(buf: ^[dynamic]u8, n: i64) -> (err: Error) {
+envelope_body_append_long :: proc(buf: ^[dynamic]byte, n: i64) -> (err: Error) {
 	tmp_buf: [8]byte = {}
 	endian.put_i64(tmp_buf[:], .Big, n)
 
@@ -130,12 +130,12 @@ envelope_body_append_long :: proc(buf: ^[dynamic]u8, n: i64) -> (err: Error) {
 	return nil
 }
 
-envelope_body_append_byte :: proc(buf: ^[dynamic]u8, b: u8) -> (err: Error) {
+envelope_body_append_byte :: proc(buf: ^[dynamic]byte, b: u8) -> (err: Error) {
 	append(buf, b) or_return
 	return nil
 }
 
-envelope_body_append_short :: proc(buf: ^[dynamic]u8, n: u16) -> (err: Error) {
+envelope_body_append_short :: proc(buf: ^[dynamic]byte, n: u16) -> (err: Error) {
 	tmp_buf: [2]byte = {}
 	endian.put_u16(tmp_buf[:], .Big, n)
 
@@ -144,7 +144,7 @@ envelope_body_append_short :: proc(buf: ^[dynamic]u8, n: u16) -> (err: Error) {
 	return nil
 }
 
-envelope_body_append_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
+envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) {
 	if len(str) >= mathbits.U16_MAX {
 		return .String_Too_Long
 	}
@@ -155,7 +155,7 @@ envelope_body_append_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Err
 	return nil
 }
 
-envelope_body_append_long_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
+envelope_body_append_long_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) {
 	if len(str) >= mathbits.I32_MAX {
 		return .String_Too_Long
 	}
@@ -168,12 +168,12 @@ envelope_body_append_long_string :: proc(buf: ^[dynamic]u8, str: string) -> (err
 
 UUID :: distinct [16]byte
 
-envelope_body_append_uuid :: proc(buf: ^[dynamic]u8, uuid: ^UUID) -> (err: Error) {
+envelope_body_append_uuid :: proc(buf: ^[dynamic]byte, uuid: ^UUID) -> (err: Error) {
 	append(buf, ..uuid[:]) or_return
 	return nil
 }
 
-envelope_body_append_string_list :: proc(buf: ^[dynamic]u8, strings: []string) -> (err: Error) {
+envelope_body_append_string_list :: proc(buf: ^[dynamic]byte, strings: []string) -> (err: Error) {
 	envelope_body_append_short(buf, u16(len(strings))) or_return
 	for string in strings {
 		envelope_body_append_string(buf, string) or_return
@@ -185,7 +185,7 @@ envelope_body_append_string_list :: proc(buf: ^[dynamic]u8, strings: []string) -
 // Bytes stuff
 //
 
-envelope_body_append_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Error) {
+envelope_body_append_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> (err: Error) {
 	if len(bytes) >= mathbits.I32_MAX {
 		return .Bytes_Too_Long
 	}
@@ -195,12 +195,12 @@ envelope_body_append_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Er
 	return nil
 }
 
-envelope_body_append_null_bytes :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+envelope_body_append_null_bytes :: proc(buf: ^[dynamic]byte) -> (err: Error) {
 	envelope_body_append_int(buf, i32(-1)) or_return
 	return nil
 }
 
-envelope_body_append_short_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Error) {
+envelope_body_append_short_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> (err: Error) {
 	if len(bytes) >= mathbits.U16_MAX {
 		return .Bytes_Too_Long
 	}
@@ -214,17 +214,17 @@ envelope_body_append_short_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (e
 // Values
 //
 
-envelope_body_append_value :: proc(buf: ^[dynamic]u8, value: []byte) -> (err: Error) {
+envelope_body_append_value :: proc(buf: ^[dynamic]byte, value: []byte) -> (err: Error) {
 	envelope_body_append_bytes(buf, value) or_return
 	return nil
 }
 
-envelope_body_append_null_value :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+envelope_body_append_null_value :: proc(buf: ^[dynamic]byte) -> (err: Error) {
 	envelope_body_append_int(buf, -1) or_return
 	return nil
 }
 
-envelope_body_append_not_set_value :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+envelope_body_append_not_set_value :: proc(buf: ^[dynamic]byte) -> (err: Error) {
 	envelope_body_append_int(buf, -2) or_return
 	return nil
 }
