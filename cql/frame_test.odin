@@ -408,6 +408,17 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x00, 0x06,
 		})
 	}
+}
+
+test_envelope_body_string_map_multimap :: proc(t: ^testing.T) {
+	check :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte) {
+		if !slice.equal(got, exp1) && !slice.equal(got, exp2) {
+			fmt.printf(" got: %x\n", got)
+			fmt.printf("exp1: %x\n", exp1)
+			fmt.printf("exp2: %x\n", exp2)
+			testing.fail_now(t)
+		}
+	}
 
 	// [string map]
 	{
@@ -423,7 +434,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_string_map(&buf, m)
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		exp1 := []byte{
 			0x00, 0x02,    // map length
 
 			0x00, 0x03,    // key length
@@ -435,7 +446,81 @@ test_envelope_body :: proc(t: ^testing.T) {
 			'n', 'a', 'm', 'e',                 // key data
 			0x00, 0x07,                         // value length
 			'V', 'i', 'n', 'c', 'e', 'n', 't',  // value data
-		})
+		}
+
+		exp2 := []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x04,                         // key length
+			'n', 'a', 'm', 'e',                 // key data
+			0x00, 0x07,                         // value length
+			'V', 'i', 'n', 'c', 'e', 'n', 't',  // value data
+
+			0x00, 0x03,    // key length
+			'f', 'o', 'o', // key data
+			0x00, 0x03,    // value length
+			'b', 'a', 'r', // value data
+		}
+
+		check(t, buf[:], exp1, exp2)
+	}
+
+	// [string multimap]
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		m := make(map[string][]string)
+		defer delete(m)
+
+		m["foo"] = []string{"he", "lo"}
+		m["names"] = []string{"Vince", "Jose"}
+
+		err := envelope_body_append_string_multimap(&buf, m)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		exp1 := []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x03,    // key length
+			'f', 'o', 'o', // key data
+			0x00, 0x02,    // list length
+			0x00, 0x02,    // list element 0 length
+			'h', 'e',      // list element 0 data
+			0x00, 0x02,    // list element 1 length
+			'l', 'o',      // list element 1 data
+
+			0x00, 0x05,               // key length
+			'n', 'a', 'm', 'e', 's',  // key data
+			0x00, 0x02,               // list length
+			0x00, 0x05,               // list element 0 length
+			'V', 'i', 'n', 'c', 'e',  // list element 0 data
+			0x00, 0x04,               // list element 1 length
+			'J', 'o', 's', 'e',       // list element 1 data
+		}
+
+		exp2 := []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x05,               // key length
+			'n', 'a', 'm', 'e', 's',  // key data
+			0x00, 0x02,               // list length
+			0x00, 0x05,               // list element 0 length
+			'V', 'i', 'n', 'c', 'e',  // list element 0 data
+			0x00, 0x04,               // list element 1 length
+			'J', 'o', 's', 'e',       // list element 1 data
+
+			0x00, 0x03,    // key length
+			'f', 'o', 'o', // key data
+			0x00, 0x02,    // list length
+			0x00, 0x02,    // list element 0 length
+			'h', 'e',      // list element 0 data
+			0x00, 0x02,    // list element 1 length
+			'l', 'o',      // list element 1 data
+
+		}
+
+		check(t, buf[:], exp1, exp2)
 	}
 }
 
