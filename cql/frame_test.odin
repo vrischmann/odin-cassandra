@@ -529,11 +529,13 @@ test_envelope_body_maps :: proc(t: ^testing.T) {
 		buf := [dynamic]byte{}
 		defer delete(buf)
 
-		m := make(map[string][]byte)
+		BODY :: distinct []byte
+
+		m := make(map[string]BODY)
 		defer delete(m)
 
-		m["foo"] = []byte{0xde, 0xad}
-		m["name"] = []byte{0xbe, 0xef}
+		m["foo"] = BODY{0xde, 0xad}
+		m["name"] = BODY{0xbe, 0xef}
 
 		err := envelope_body_append_bytes_map(&buf, m)
 		testing.expectf(t, err == nil, "got error: %v", err)

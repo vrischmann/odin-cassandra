@@ -350,7 +350,7 @@ envelope_body_append_string_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V) ->
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, value in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_string(buf, value) or_return
+		envelope_body_append_string(buf, cast(string) value) or_return
 	}
 	return nil
 }
@@ -361,7 +361,7 @@ envelope_body_append_string_multimap :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, list in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_string_list(buf, list) or_return
+		envelope_body_append_string_list(buf, cast([]string) list) or_return
 	}
 	return nil
 }
@@ -372,7 +372,7 @@ envelope_body_append_bytes_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V/[]by
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, list in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_bytes(buf, list) or_return
+		envelope_body_append_bytes(buf, cast([]byte) list) or_return
 	}
 	return nil
 }
