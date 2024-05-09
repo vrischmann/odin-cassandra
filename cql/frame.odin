@@ -1,14 +1,15 @@
 package cql
 
+import "base:intrinsics"
 import "core:encoding/endian"
-import "core:runtime"
 import "core:fmt"
 import mathbits "core:math/bits"
+import "core:runtime"
 
 Error :: union #shared_nil {
 	runtime.Allocator_Error,
 	Envelope_Parse_Error,
-	Envelope_Build_Error,
+	Envelope_Body_Build_Error,
 }
 
 UncompressedFrame :: struct {
@@ -58,7 +59,7 @@ is_response :: proc(header: ^EnvelopeHeader) -> bool {
 	return u8(header.version) & 0x80 == 0x80
 }
 
-EnvelopeBody :: distinct []u8
+EnvelopeBody :: distinct []byte
 
 Envelope :: struct {
 	header: EnvelopeHeader,
@@ -72,7 +73,7 @@ Envelope_Parse_Error :: enum {
 }
 
 @(private)
-parse_envelope :: proc(data: []u8) -> (Envelope, Error) {
+parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 	FRAME_HEADER_SIZE :: 9
 
 	if len(data) <  FRAME_HEADER_SIZE {
@@ -101,22 +102,135 @@ parse_envelope :: proc(data: []u8) -> (Envelope, Error) {
 	return res, nil
 }
 
-Envelope_Build_Error :: enum {
-	None = 0,
-	String_Too_Long,
+Envelope_Body_Builder :: struct {
 }
 
-@(private)
-envelope_append_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
+Envelope_Body_Build_Error :: enum {
+	None = 0,
+	String_Too_Long,
+	Bytes_Too_Long,
+}
+
+envelope_body_append_int :: proc(buf: ^[dynamic]u8, n: i32) -> (err: Error) {
+	tmp_buf: [4]byte = {}
+	endian.put_i32(tmp_buf[:], .Big, n)
+
+	append(buf, ..tmp_buf[:]) or_return
+
+	return nil
+}
+
+envelope_body_append_long :: proc(buf: ^[dynamic]u8, n: i64) -> (err: Error) {
+	tmp_buf: [8]byte = {}
+	endian.put_i64(tmp_buf[:], .Big, n)
+
+	append(buf, ..tmp_buf[:]) or_return
+
+	return nil
+}
+
+envelope_body_append_byte :: proc(buf: ^[dynamic]u8, b: u8) -> (err: Error) {
+	append(buf, b) or_return
+	return nil
+}
+
+envelope_body_append_short :: proc(buf: ^[dynamic]u8, n: u16) -> (err: Error) {
+	tmp_buf: [2]byte = {}
+	endian.put_u16(tmp_buf[:], .Big, n)
+
+	append(buf, ..tmp_buf[:]) or_return
+
+	return nil
+}
+
+envelope_body_append_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
 	if len(str) >= mathbits.U16_MAX {
 		return .String_Too_Long
 	}
 
-	tmp_buf: [2]u8 = {}
-	endian.put_u16(tmp_buf[:], .Big, u16(len(str)))
+	envelope_body_append_short(buf, u16(len(str))) or_return
+	append(buf, str) or_return
 
-	append(buf, ..tmp_buf[:])
-	append(buf, str)
+	return nil
+}
+
+envelope_body_append_long_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
+	if len(str) >= mathbits.I32_MAX {
+		return .String_Too_Long
+	}
+
+	envelope_body_append_int(buf, i32(len(str))) or_return
+	append(buf, str) or_return
+
+	return nil
+}
+
+UUID :: distinct [16]byte
+
+envelope_body_append_uuid :: proc(buf: ^[dynamic]u8, uuid: ^UUID) -> (err: Error) {
+	append(buf, ..uuid[:]) or_return
+	return nil
+}
+
+envelope_body_append_string_list :: proc(buf: ^[dynamic]u8, strings: []string) -> (err: Error) {
+	envelope_body_append_short(buf, u16(len(strings))) or_return
+	for string in strings {
+		envelope_body_append_string(buf, string) or_return
+	}
+	return nil
+}
+
+// TODO(vincent): use an enum for this maybe ?
+
+envelope_body_append_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Error) {
+	if len(bytes) >= mathbits.I32_MAX {
+		return .Bytes_Too_Long
+	}
+
+	envelope_body_append_int(buf, i32(len(bytes))) or_return
+	append(buf, ..bytes) or_return
+	return nil
+}
+
+envelope_body_append_null_bytes :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+	envelope_body_append_int(buf, i32(-1)) or_return
+	return nil
+}
+
+envelope_body_append_short_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Error) {
+	if len(bytes) >= mathbits.U16_MAX {
+		return .Bytes_Too_Long
+	}
+
+	envelope_body_append_short(buf, u16(len(bytes))) or_return
+	append(buf, ..bytes) or_return
+	return nil
+}
+
+envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
+	where intrinsics.type_is_unsigned(N)
+{
+	n := n
+
+	tmp_buf: [9]byte = {}
+	i := 0
+
+	// split into 7 bits chunks with the most significant bit set when there are more bytes to read.
+	//
+	// 0x80 == 128 == 0b1000_0000
+	// If the number is greater than or equal to that, it must be encoded as a chunk.
+
+	for n >= 0x80 {
+		// set the most significant bit to indicate there's more bytes to read
+		tmp_buf[i] = byte(n) | 0x80
+		n >>= 7
+		i += 1
+	}
+
+	// the remaining chunk that is less than 128. The most significant bit must not be set.
+	tmp_buf[i] = byte(n)
+
+	append(buf, ..tmp_buf[:i+1]) or_return
 
 	return nil
 }
