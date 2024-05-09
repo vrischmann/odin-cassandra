@@ -110,8 +110,10 @@ test_build_envelope :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	envelope, err := build_envelope(&buf, startup_header, body[:])
+	err := envelope_append(&buf, startup_header, body[:])
 	testing.expectf(t, err == nil, "got error: %v", err)
+
+	fmt.printf("envelope: %x\n", buf[:])
 }
 
 @(test)

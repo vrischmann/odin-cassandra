@@ -107,8 +107,31 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 // Envelopes
 //
 
-build_envelope :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte) -> (envelope: Envelope, err: Error) {
-	unimplemented("nope")
+Envelope_Direction :: enum {
+	Request,
+	Response,
+}
+
+envelope_append :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte, direction: Envelope_Direction = .Request) -> (err: Error) {
+	// Write the header
+	//
+	// Note that we reuse some functions for building the envelope body because they work exactly the same here
+
+	switch direction {
+	case .Request:
+		append(buf, byte(hdr.version)) or_return
+	case .Response:
+		append(buf, byte(hdr.version) | 0x80) or_return
+	}
+	append(buf, byte(hdr.flags)) or_return
+	envelope_body_append_short(buf, hdr.stream)
+	append(buf, byte(hdr.opcode)) or_return
+	envelope_body_append_int(buf, i32(len(body))) or_return
+
+	// Write the body
+	append(buf, ..body) or_return
+
+	return nil
 }
 
 //
