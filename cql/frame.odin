@@ -293,20 +293,25 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 envelope_body_append_inet :: proc(buf: ^[dynamic]byte, address: net.Address, port: $N) -> (err: Error)
 	where intrinsics.type_is_integer(N) && size_of(N) <= 8
 {
+	envelope_body_append_inetaddr(buf, address) or_return
+	envelope_body_append_int(buf, i32(port)) or_return
+
+	return nil
+}
+
+envelope_body_append_inetaddr :: proc(buf: ^[dynamic]byte, address: net.Address) -> (err: Error) {
 	switch v in address {
 	case net.IP4_Address:
 		addr := v
 
 		append(buf, 4) or_return
 		append(buf, ..addr[:]) or_return
-		envelope_body_append_int(buf, i32(port))
 
 	case net.IP6_Address:
 		addr := transmute([16]byte) v
 
 		append(buf, 16) or_return
 		append(buf, ..addr[:]) or_return
-		envelope_body_append_int(buf, i32(port))
 	}
 
 	return nil

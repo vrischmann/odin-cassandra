@@ -367,6 +367,34 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x00, 0x00, 0x5d, 0xc0,       // port
 		})
 	}
+
+	// [inetaddr]
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_inetaddr(&buf, net.IP4_Address{
+			192, 168, 1, 1,
+		})
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		err2 := envelope_body_append_inetaddr(&buf, net.IP6_Address{
+			0xfe80, 0x0000, 0x0003, 0x0003,
+			0x0002, 0x0002, 0x0001, 0x0001,
+		})
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0x04,                         // address size
+			192, 168, 1, 1,               // address bytes
+
+			0x10,                         // address size
+			0xfe, 0x80, 0x00, 0x00,       // address
+			0x00, 0x03, 0x00, 0x03,
+			0x00, 0x02, 0x00, 0x02,
+			0x00, 0x01, 0x00, 0x01,
+		})
+	}
 }
 
 expect_envelope_body :: proc(t: ^testing.T, got: []u8, exp: []u8) {
