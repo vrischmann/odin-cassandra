@@ -1,3 +1,7 @@
+clean:
+	rm odin-cassandra
+	rm *.bin
+
 build:
 	odin build . -debug
 
