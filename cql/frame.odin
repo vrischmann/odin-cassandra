@@ -290,6 +290,10 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 // 	return nil
 // }
 
+//
+// Special types
+//
+
 envelope_body_append_inet :: proc(buf: ^[dynamic]byte, address: net.Address, port: $N) -> (err: Error)
 	where intrinsics.type_is_integer(N) && size_of(N) <= 8
 {
@@ -333,5 +337,20 @@ Consistency :: enum {
 
 envelope_body_append_consistency :: proc(buf: ^[dynamic]byte, consistency: Consistency) -> (err: Error) {
 	envelope_body_append_short(buf, u16(consistency)) or_return
+	return nil
+}
+
+//
+// Maps
+//
+
+envelope_body_append_string_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V) -> (err: Error)
+	where intrinsics.type_is_string(K) && intrinsics.type_is_string(V)
+{
+	envelope_body_append_short(buf, u16(len(m))) or_return
+	for key, value in m {
+		envelope_body_append_string(buf, key) or_return
+		envelope_body_append_string(buf, value) or_return
+	}
 	return nil
 }

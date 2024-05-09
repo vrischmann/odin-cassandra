@@ -408,6 +408,35 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x00, 0x06,
 		})
 	}
+
+	// [string map]
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		m := make(map[string]string)
+		defer delete(m)
+
+		m["foo"] = "bar"
+		m["name"] = "Vincent"
+
+		err := envelope_body_append_string_map(&buf, m)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_envelope_body(t, buf[:], []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x03,    // key length
+			'f', 'o', 'o', // key data
+			0x00, 0x03,    // value length
+			'b', 'a', 'r', // value data
+
+			0x00, 0x04,                         // key length
+			'n', 'a', 'm', 'e',                 // key data
+			0x00, 0x07,                         // value length
+			'V', 'i', 'n', 'c', 'e', 'n', 't',  // value data
+		})
+	}
 }
 
 expect_envelope_body :: proc(t: ^testing.T, got: []byte, exp: []byte) {
