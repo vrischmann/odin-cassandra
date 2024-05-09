@@ -263,10 +263,35 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x82, 0xbf, 0x1,
 		})
 	}
+
+	// [vint]
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_vint(&buf, i64(282240))
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		err2 := envelope_body_append_vint(&buf, i64(-2400))
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+		err3 := envelope_body_append_vint(&buf, i32(-38000))
+		testing.expectf(t, err3 == nil, "got error: %v", err3)
+
+		err4 := envelope_body_append_vint(&buf, i32(80000000))
+		testing.expectf(t, err4 == nil, "got error: %v", err4)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0x80, 0xba, 0x22,         // 2822240
+			0xbf, 0x25,               // -2400
+			0xdf, 0xd1, 0x04,         // -38000
+			0x80, 0xd0, 0xa5, 0x4c,   // 80000000
+		})
+	}
 }
 
 expect_envelope_body :: proc(t: ^testing.T, got: []u8, exp: []u8) {
 	if !slice.equal(got, exp) {
-		testing.errorf(t, "expected %v, got %v", exp, got)
+		testing.errorf(t, "expected %v (%x), got %v (%x)", exp, exp, got, got)
 	}
 }

@@ -236,3 +236,21 @@ envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: 
 
 	return nil
 }
+
+envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
+	where type_of(n) == i32 || type_of(n) == i64
+{
+	when type_of(n) == i32 {
+		tmp := u32(n >> 31) ~ u32(n << 1)
+
+		envelope_body_append_unsigned_vint(buf, tmp) or_return
+	}
+
+	when type_of(n) == i64 {
+		tmp := u64(n >> 63) ~ u64(n << 1)
+
+		envelope_body_append_unsigned_vint(buf, tmp) or_return
+	}
+
+	return nil
+}
