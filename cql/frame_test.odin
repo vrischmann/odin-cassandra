@@ -124,7 +124,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_int(&buf, i32(40))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{0x00, 0x00, 0x00, 0x28})
+		expect_equal_slices(t, buf[:], []byte{0x00, 0x00, 0x00, 0x28})
 	}
 
 	// [long]
@@ -135,7 +135,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_long(&buf, i64(40))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x00, 0x00, 0x00,
 			0x00, 0x00, 0x00, 0x28,
 		})
@@ -149,7 +149,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_byte(&buf, u8(40))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{0x28})
+		expect_equal_slices(t, buf[:], []byte{0x28})
 	}
 
 	// [short]
@@ -160,7 +160,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_short(&buf, u16(40))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{0x00, 0x28})
+		expect_equal_slices(t, buf[:], []byte{0x00, 0x28})
 	}
 
 	// [string]
@@ -171,7 +171,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_string(&buf, "hello")
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x05,
 			'h', 'e', 'l', 'l', 'o',
 		})
@@ -185,7 +185,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_long_string(&buf, "hello")
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x00, 0x00, 0x05,
 			'h', 'e', 'l', 'l', 'o',
 		})
@@ -204,7 +204,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0xfd, 0xd8, 0x73, 0xbc,
 			0x14, 0xb5, 0x46, 0x9b,
 			0x94, 0xa0, 0xb8, 0x9b,
@@ -222,7 +222,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x02,
 			0x00, 0x03, 'f', 'o', 'o',
 			0x00, 0x03, 'b', 'a', 'r',
@@ -239,7 +239,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x00, 0x00, 0x04,
 			0xde, 0xad, 0xbe, 0xef,
 		})
@@ -253,7 +253,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_null_bytes(&buf)
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0xff, 0xff, 0xff, 0xff,
 		})
 	}
@@ -268,7 +268,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x00, 0x00, 0x04,
 			0xde, 0xad, 0xbe, 0xef,
 		})
@@ -282,7 +282,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_null_value(&buf)
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0xff, 0xff, 0xff, 0xff,
 		})
 	}
@@ -295,7 +295,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_not_set_value(&buf)
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0xff, 0xff, 0xff, 0xfe,
 		})
 	}
@@ -310,7 +310,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x04,
 			0xde, 0xad, 0xbe, 0xef,
 		})
@@ -330,7 +330,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err3 := envelope_body_append_unsigned_vint(&buf, u16(24450))
 		testing.expectf(t, err3 == nil, "got error: %v", err3)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x80, 0x9d, 0x11,
 			0x80, 0x9d, 0x11,
 			0x82, 0xbf, 0x1,
@@ -354,7 +354,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err4 := envelope_body_append_vint(&buf, i32(80000000))
 		testing.expectf(t, err4 == nil, "got error: %v", err4)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x80, 0xba, 0x22,         // 2822240
 			0xbf, 0x25,               // -2400
 			0xdf, 0xd1, 0x04,         // -38000
@@ -384,7 +384,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		)
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x04,                         // address size
 			192, 168, 1, 1,               // address bytes
 			0x00, 0x00, 0x5d, 0xc0,       // port
@@ -414,7 +414,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x04,                         // address size
 			192, 168, 1, 1,               // address bytes
 
@@ -434,7 +434,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		err := envelope_body_append_consistency(&buf, .LOCAL_QUORUM)
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		expect_envelope_body(t, buf[:], []byte{
+		expect_equal_slices(t, buf[:], []byte{
 			0x00, 0x06,
 		})
 	}
@@ -602,7 +602,7 @@ test_envelope_body_maps :: proc(t: ^testing.T) {
 	}
 }
 
-expect_envelope_body :: proc(t: ^testing.T, got: []byte, exp: []byte) {
+expect_equal_slices :: proc(t: ^testing.T, got, exp: $T/[]$E) {
 	if !slice.equal(got, exp) {
 		fmt.printf("got: %x\n", got)
 		fmt.printf("exp: %x\n", exp)
