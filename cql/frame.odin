@@ -48,11 +48,11 @@ EnvelopeHeader :: struct {
 	length: u32,
 }
 
-is_request_frame :: proc(header: ^EnvelopeHeader) -> bool {
+is_request :: proc(header: ^EnvelopeHeader) -> bool {
 	return u8(header.version) & 0x80 == 0
 }
 
-is_response_frame :: proc(header: ^EnvelopeHeader) -> bool {
+is_response :: proc(header: ^EnvelopeHeader) -> bool {
 	return u8(header.version) & 0x80 == 0x80
 }
 
