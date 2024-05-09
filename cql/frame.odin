@@ -365,3 +365,14 @@ envelope_body_append_string_multimap :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$
 	}
 	return nil
 }
+
+envelope_body_append_bytes_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V/[]byte) -> (err: Error)
+	where intrinsics.type_is_string(K) && intrinsics.type_is_slice(V)
+{
+	envelope_body_append_short(buf, u16(len(m))) or_return
+	for key, list in m {
+		envelope_body_append_string(buf, key) or_return
+		envelope_body_append_bytes(buf, list) or_return
+	}
+	return nil
+}

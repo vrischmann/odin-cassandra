@@ -410,7 +410,8 @@ test_envelope_body :: proc(t: ^testing.T) {
 	}
 }
 
-test_envelope_body_string_map_multimap :: proc(t: ^testing.T) {
+// This test is separate because it requires specific stuff to test maps due to the random iteration order so I'd rather put it in a specific function.
+test_envelope_body_maps :: proc(t: ^testing.T) {
 	check :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte) {
 		if !slice.equal(got, exp1) && !slice.equal(got, exp2) {
 			fmt.printf(" got: %x\n", got)
@@ -518,6 +519,51 @@ test_envelope_body_string_map_multimap :: proc(t: ^testing.T) {
 			0x00, 0x02,    // list element 1 length
 			'l', 'o',      // list element 1 data
 
+		}
+
+		check(t, buf[:], exp1, exp2)
+	}
+
+	// [bytes map]
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		m := make(map[string][]byte)
+		defer delete(m)
+
+		m["foo"] = []byte{0xde, 0xad}
+		m["name"] = []byte{0xbe, 0xef}
+
+		err := envelope_body_append_bytes_map(&buf, m)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		exp1 := []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x03,             // key length
+			'f', 'o', 'o',          // key data
+			0x00, 0x04,             // value length
+			0xde, 0xad, 0xbe, 0xef, // value data
+
+			0x00, 0x04,             // key length
+			'n', 'a', 'm', 'e',     // key data
+			0x00, 0x04,             // value length
+			0xbe, 0xef,             // value data
+		}
+
+		exp2 := []byte{
+			0x00, 0x02,    // map length
+
+			0x00, 0x04,             // key length
+			'n', 'a', 'm', 'e',     // key data
+			0x00, 0x04,             // value length
+			0xbe, 0xef,             // value data
+
+			0x00, 0x03,             // key length
+			'f', 'o', 'o',          // key data
+			0x00, 0x04,             // value length
+			0xde, 0xad, 0xbe, 0xef, // value data
 		}
 
 		check(t, buf[:], exp1, exp2)
