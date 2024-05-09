@@ -395,6 +395,19 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x00, 0x01, 0x00, 0x01,
 		})
 	}
+
+	// [consistency]
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		err := envelope_body_append_consistency(&buf, .LOCAL_QUORUM)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_envelope_body(t, buf[:], []byte{
+			0x00, 0x06,
+		})
+	}
 }
 
 expect_envelope_body :: proc(t: ^testing.T, got: []u8, exp: []u8) {
