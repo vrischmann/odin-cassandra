@@ -177,7 +177,9 @@ envelope_body_append_long_string :: proc(buf: ^[dynamic]byte, str: string) -> (e
 
 UUID :: distinct [16]byte
 
-envelope_body_append_uuid :: proc(buf: ^[dynamic]byte, uuid: ^UUID) -> (err: Error) {
+envelope_body_append_uuid :: proc(buf: ^[dynamic]byte, uuid: UUID) -> (err: Error) {
+	uuid := uuid
+
 	append(buf, ..uuid[:]) or_return
 	return nil
 }

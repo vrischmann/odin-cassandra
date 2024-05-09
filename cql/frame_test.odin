@@ -196,7 +196,7 @@ test_envelope_body :: proc(t: ^testing.T) {
 		buf := [dynamic]byte{}
 		defer delete(buf)
 
-		err := envelope_body_append_uuid(&buf, &UUID{
+		err := envelope_body_append_uuid(&buf, UUID{
 			0xfd, 0xd8, 0x73, 0xbc,
 			0x14, 0xb5, 0x46, 0x9b,
 			0x94, 0xa0, 0xb8, 0x9b,
