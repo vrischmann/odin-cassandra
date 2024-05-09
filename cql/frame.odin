@@ -221,8 +221,10 @@ envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: 
 	// If the number is greater than or equal to that, it must be encoded as a chunk.
 
 	for n >= 0x80 {
-		// set the most significant bit to indicate there's more bytes to read
-		tmp_buf[i] = byte(n) | 0x80
+		// a chunk is:
+		// * the least significant 7 bits
+		// * the most significant  bit set to 1
+		tmp_buf[i] = byte(n & 0x7F) | 0x80
 		n >>= 7
 		i += 1
 	}
