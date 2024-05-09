@@ -227,6 +227,48 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 	}
 
+	// [value] - with data
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_value(&buf, []u8{
+			0xde, 0xad, 0xbe, 0xef,
+		})
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0x00, 0x00, 0x00, 0x04,
+			0xde, 0xad, 0xbe, 0xef,
+		})
+	}
+
+	// [value] - null
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_null_value(&buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0xff, 0xff, 0xff, 0xff,
+		})
+	}
+
+	// [value] - not set
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_not_set_value(&buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0xff, 0xff, 0xff, 0xfe,
+		})
+	}
+
 	// [short bytes]
 	{
 		buf := [dynamic]u8{}

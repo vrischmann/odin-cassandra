@@ -180,7 +180,9 @@ envelope_body_append_string_list :: proc(buf: ^[dynamic]u8, strings: []string) -
 	return nil
 }
 
-// TODO(vincent): use an enum for this maybe ?
+//
+// Bytes stuff
+//
 
 envelope_body_append_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (err: Error) {
 	if len(bytes) >= mathbits.I32_MAX {
@@ -206,6 +208,27 @@ envelope_body_append_short_bytes :: proc(buf: ^[dynamic]u8, bytes: []byte) -> (e
 	append(buf, ..bytes) or_return
 	return nil
 }
+
+//
+// Values
+//
+
+envelope_body_append_value :: proc(buf: ^[dynamic]u8, value: []byte) -> (err: Error) {
+	envelope_body_append_bytes(buf, value) or_return
+	return nil
+}
+
+envelope_body_append_null_value :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+	envelope_body_append_int(buf, -1) or_return
+	return nil
+}
+
+envelope_body_append_not_set_value :: proc(buf: ^[dynamic]u8) -> (err: Error) {
+	envelope_body_append_int(buf, -2) or_return
+	return nil
+}
+
+// Variable length integer
 
 envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 	where intrinsics.type_is_unsigned(N)
@@ -254,3 +277,7 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 
 	return nil
 }
+
+//
+// Options
+//
