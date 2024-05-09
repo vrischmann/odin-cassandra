@@ -4,16 +4,16 @@ import "core:fmt"
 import "core:testing"
 
 @(test)
-test_parse_frame_frame_too_short :: proc(t: ^testing.T) {
+test_parse_envelope_too_short :: proc(t: ^testing.T) {
 	data := []u8{0xde, 0xad}
 
-	frame, err := parse_frame(data[:])
+	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err != nil, "got error: %v", err)
-	testing.expect_value(t, err, Error.Frame_Too_Short)
+	testing.expect_value(t, err, Error.Envelope_Too_Short)
 }
 
 @(test)
-test_parse_frame_valid_frame :: proc(t: ^testing.T) {
+test_parse_envelope_valid :: proc(t: ^testing.T) {
 	data := [dynamic]u8{
 		0x05,                   // version
 		0x02,                   // flags
@@ -21,20 +21,20 @@ test_parse_frame_valid_frame :: proc(t: ^testing.T) {
 		u8(Opcode.STARTUP),     // opcode
 		0x00, 0x00, 0x00, 0x08, // length
 	}
-	append(&data, "foobarba")
+	append(&data, "foobarba") // body
 
-	frame, err := parse_frame(data[:])
+	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err == nil, "got error: %v", err)
 
-	testing.expect_value(t, frame.header.version, ProtocolVersion.V5)
-	testing.expect_value(t, frame.header.flags, 2)
-	testing.expect_value(t, frame.header.stream, 1)
-	testing.expect_value(t, frame.header.opcode, Opcode.STARTUP)
-	testing.expect_value(t, frame.header.length, 8)
+	testing.expect_value(t, envelope.header.version, ProtocolVersion.V5)
+	testing.expect_value(t, envelope.header.flags, 2)
+	testing.expect_value(t, envelope.header.stream, 1)
+	testing.expect_value(t, envelope.header.opcode, Opcode.STARTUP)
+	testing.expect_value(t, envelope.header.length, 8)
 }
 
 @(test)
-test_parse_frame_invalid_payload :: proc(t: ^testing.T) {
+test_parse_envelope_invalid_body :: proc(t: ^testing.T) {
 	data := [dynamic]u8{
 		0x05,                   // version
 		0x02,                   // flags
@@ -42,9 +42,9 @@ test_parse_frame_invalid_payload :: proc(t: ^testing.T) {
 		u8(Opcode.STARTUP),     // opcode
 		0x00, 0x00, 0x00, 0x08, // length
 	}
-	append(&data, "foo") // payload is too short
+	append(&data, "foo") // body is too short
 
-	frame, err := parse_frame(data[:])
+	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err != nil, "got error: %v", err)
-	testing.expect_value(t, err, Error.Invalid_Frame_Payload_Length)
+	testing.expect_value(t, err, Error.Invalid_Envelope_Body_Length)
 }

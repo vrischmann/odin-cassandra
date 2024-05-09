@@ -5,8 +5,8 @@ import "core:fmt"
 
 Error :: enum {
 	None = 0,
-	Frame_Too_Short,
-	Invalid_Frame_Payload_Length,
+	Envelope_Too_Short,
+	Invalid_Envelope_Body_Length,
 }
 
 UncompressedFrame :: struct {
@@ -40,7 +40,7 @@ ProtocolVersion :: enum {
 	V5 = 5,
 }
 
-FrameHeader :: struct {
+EnvelopeHeader :: struct {
 	version: ProtocolVersion,
 	flags: u8,
 	stream: u16,
@@ -48,29 +48,30 @@ FrameHeader :: struct {
 	length: u32,
 }
 
-is_request_frame :: proc(header: ^FrameHeader) -> bool {
+is_request_frame :: proc(header: ^EnvelopeHeader) -> bool {
 	return u8(header.version) & 0x80 == 0
 }
 
-is_response_frame :: proc(header: ^FrameHeader) -> bool {
+is_response_frame :: proc(header: ^EnvelopeHeader) -> bool {
 	return u8(header.version) & 0x80 == 0x80
 }
 
-FramePayload :: distinct []u8
+EnvelopeBody :: distinct []u8
 
-Frame :: struct {
-	header: FrameHeader,
-	payload: FramePayload,
+Envelope :: struct {
+	header: EnvelopeHeader,
+	body: EnvelopeBody,
 }
 
-parse_frame :: proc(data: []u8) -> (Frame, Error) {
+@(private)
+parse_envelope :: proc(data: []u8) -> (Envelope, Error) {
 	FRAME_HEADER_SIZE :: 9
 
 	if len(data) <  FRAME_HEADER_SIZE {
-		return {}, .Frame_Too_Short
+		return {}, .Envelope_Too_Short
 	}
 
-	hdr: FrameHeader = {}
+	hdr: EnvelopeHeader = {}
 	hdr.version = ProtocolVersion(data[0])
 	hdr.flags = data[1]
 	hdr.stream  = endian.get_u16(data[2:4], .Big) or_else 0xAAAA
@@ -81,12 +82,12 @@ parse_frame :: proc(data: []u8) -> (Frame, Error) {
 
 	length := int(hdr.length)
 	if length != len(remaining) {
-		return {}, .Invalid_Frame_Payload_Length,
+		return {}, .Invalid_Envelope_Body_Length,
 	}
 
-	res := Frame{
+	res := Envelope{
 		header = hdr,
-		payload = FramePayload(remaining),
+		body = EnvelopeBody(remaining),
 	}
 
 	return res, nil
