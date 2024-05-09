@@ -4,6 +4,7 @@ import "base:intrinsics"
 import "core:encoding/endian"
 import "core:fmt"
 import mathbits "core:math/bits"
+import "core:net"
 import "core:runtime"
 
 Error :: union #shared_nil {
@@ -281,3 +282,32 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 //
 // Options
 //
+
+// TODO(vincent): implement options
+
+// envelope_body_append_option :: proc(buf: ^[dynamic]byte, id: u16, value: $V) -> (err: Error) {
+// 	envelope_body_append_short(buf, id) or_return
+// 	return nil
+// }
+
+envelope_body_append_inet :: proc(buf: ^[dynamic]byte, address: net.Address, port: $N) -> (err: Error)
+	where intrinsics.type_is_integer(N) && size_of(N) <= 8
+{
+	switch v in address {
+	case net.IP4_Address:
+		addr := v
+
+		append(buf, 4) or_return
+		append(buf, ..addr[:]) or_return
+		envelope_body_append_int(buf, i32(port))
+
+	case net.IP6_Address:
+		addr := transmute([16]byte) v
+
+		append(buf, 16) or_return
+		append(buf, ..addr[:]) or_return
+		envelope_body_append_int(buf, i32(port))
+	}
+
+	return nil
+}

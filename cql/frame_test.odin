@@ -2,6 +2,7 @@ package cql
 
 import "core:encoding/endian"
 import "core:fmt"
+import "core:net"
 import "core:slice"
 import "core:testing"
 
@@ -330,10 +331,48 @@ test_envelope_body :: proc(t: ^testing.T) {
 			0x80, 0xd0, 0xa5, 0x4c,   // 80000000
 		})
 	}
+
+	// [inet]
+	{
+		buf := [dynamic]u8{}
+		defer delete(buf)
+
+		err := envelope_body_append_inet(&buf,
+			net.IP4_Address{
+				192, 168, 1, 1,
+			},
+			i32(24000),
+		)
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		err2 := envelope_body_append_inet(&buf,
+			net.IP6_Address{
+				0xfe80, 0x0000, 0x0003, 0x0003,
+				0x0002, 0x0002, 0x0001, 0x0001,
+			},
+			i32(24000),
+		)
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+		expect_envelope_body(t, buf[:], []u8{
+			0x04,                         // address size
+			192, 168, 1, 1,               // address bytes
+			0x00, 0x00, 0x5d, 0xc0,       // port
+
+			0x10,                         // address size
+			0xfe, 0x80, 0x00, 0x00,       // address
+			0x00, 0x03, 0x00, 0x03,
+			0x00, 0x02, 0x00, 0x02,
+			0x00, 0x01, 0x00, 0x01,
+			0x00, 0x00, 0x5d, 0xc0,       // port
+		})
+	}
 }
 
 expect_envelope_body :: proc(t: ^testing.T, got: []u8, exp: []u8) {
 	if !slice.equal(got, exp) {
-		testing.errorf(t, "expected %v (%x), got %v (%x)", exp, exp, got, got)
+		fmt.printf("got: %x\n", got)
+		fmt.printf("exp: %x\n", exp)
+		testing.errorf(t, "expected %v, got %v", exp, got)
 	}
 }
