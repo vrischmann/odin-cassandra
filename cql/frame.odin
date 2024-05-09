@@ -1,12 +1,14 @@
 package cql
 
 import "core:encoding/endian"
+import "core:runtime"
 import "core:fmt"
+import mathbits "core:math/bits"
 
-Error :: enum {
-	None = 0,
-	Envelope_Too_Short,
-	Invalid_Envelope_Body_Length,
+Error :: union #shared_nil {
+	runtime.Allocator_Error,
+	Envelope_Parse_Error,
+	Envelope_Build_Error,
 }
 
 UncompressedFrame :: struct {
@@ -63,6 +65,12 @@ Envelope :: struct {
 	body: EnvelopeBody,
 }
 
+Envelope_Parse_Error :: enum {
+	None = 0,
+	Envelope_Too_Short,
+	Invalid_Envelope_Body_Length,
+}
+
 @(private)
 parse_envelope :: proc(data: []u8) -> (Envelope, Error) {
 	FRAME_HEADER_SIZE :: 9
@@ -91,4 +99,24 @@ parse_envelope :: proc(data: []u8) -> (Envelope, Error) {
 	}
 
 	return res, nil
+}
+
+Envelope_Build_Error :: enum {
+	None = 0,
+	String_Too_Long,
+}
+
+@(private)
+envelope_append_string :: proc(buf: ^[dynamic]u8, str: string) -> (err: Error) {
+	if len(str) >= mathbits.U16_MAX {
+		return .String_Too_Long
+	}
+
+	tmp_buf: [2]u8 = {}
+	endian.put_u16(tmp_buf[:], .Big, u16(len(str)))
+
+	append(buf, ..tmp_buf[:])
+	append(buf, str)
+
+	return nil
 }
