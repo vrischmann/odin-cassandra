@@ -85,6 +85,36 @@ test_parse_envelope_invalid_body :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_build_envelope :: proc(t: ^testing.T) {
+	body := [dynamic]byte{}
+	defer delete(body)
+
+	{
+		options := make(map[string]string)
+		defer delete(options)
+
+		options["CQL_VERSION"] = "3.0.0"
+		options["DRIVER_NAME"] = "odin-cassandra"
+
+		err := envelope_body_append_string_map(&body, options)
+		testing.expectf(t, err == nil, "got error: %v", err)
+	}
+
+	startup_header: EnvelopeHeader = {}
+	startup_header.version = .V5
+	startup_header.flags = 0
+	startup_header.stream = 10000
+	startup_header.opcode = .STARTUP
+	startup_header.length = u32(len(body))
+
+	buf := [dynamic]byte{}
+	defer delete(buf)
+
+	envelope, err := build_envelope(&buf, startup_header, body[:])
+	testing.expectf(t, err == nil, "got error: %v", err)
+}
+
+@(test)
 test_envelope_body :: proc(t: ^testing.T) {
 	// [int]
 	{

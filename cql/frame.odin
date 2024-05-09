@@ -103,8 +103,17 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 	return res, nil
 }
 
-Envelope_Body_Builder :: struct {
+//
+// Envelopes
+//
+
+build_envelope :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte) -> (envelope: Envelope, err: Error) {
+	unimplemented("nope")
 }
+
+//
+// Envelope body primitives
+//
 
 Envelope_Body_Build_Error :: enum {
 	None = 0,
@@ -181,9 +190,7 @@ envelope_body_append_string_list :: proc(buf: ^[dynamic]byte, strings: []string)
 	return nil
 }
 
-//
 // Bytes stuff
-//
 
 envelope_body_append_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> (err: Error) {
 	if len(bytes) >= mathbits.I32_MAX {
@@ -210,9 +217,7 @@ envelope_body_append_short_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> 
 	return nil
 }
 
-//
 // Values
-//
 
 envelope_body_append_value :: proc(buf: ^[dynamic]byte, value: []byte) -> (err: Error) {
 	envelope_body_append_bytes(buf, value) or_return
@@ -279,10 +284,7 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 	return nil
 }
 
-//
 // Options
-//
-
 // TODO(vincent): implement options
 
 // envelope_body_append_option :: proc(buf: ^[dynamic]byte, id: u16, value: $V) -> (err: Error) {
@@ -290,9 +292,7 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 // 	return nil
 // }
 
-//
 // Special types
-//
 
 envelope_body_append_inet :: proc(buf: ^[dynamic]byte, address: net.Address, port: $N) -> (err: Error)
 	where intrinsics.type_is_integer(N) && size_of(N) <= 8
@@ -340,9 +340,7 @@ envelope_body_append_consistency :: proc(buf: ^[dynamic]byte, consistency: Consi
 	return nil
 }
 
-//
 // Maps
-//
 
 envelope_body_append_string_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V) -> (err: Error)
 	where intrinsics.type_is_string(K) && intrinsics.type_is_string(V)
