@@ -30,6 +30,7 @@ new_ring :: proc(entries: int) -> (^ring, Error) {
 	return res, nil
 }
 
-close_ring :: proc(ring: ^ring) {
+destroy_ring :: proc(ring: ^ring) {
 	queue_exit(&ring.underlying)
+	free(ring)
 }

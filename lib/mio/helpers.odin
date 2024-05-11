@@ -21,7 +21,6 @@ OS_Error :: enum {
 
 Error :: union #shared_nil {
 	OS_Error,
-	Parse_Address_Error,
 }
 
 os_err_from_errno :: proc(#any_int errno: os.Errno) -> OS_Error {
@@ -47,7 +46,7 @@ os_err_from_errno :: proc(#any_int errno: os.Errno) -> OS_Error {
 	}
 }
 
-create_socket :: proc() -> (os.Socket, Error) {
+create_socket :: proc() -> (os.Socket, OS_Error) {
 	tmp, errno := os.socket(os.AF_INET, os.SOCK_STREAM, 0)
 	if errno < 0 {
 		log.errorf("unable to create socket, err: %v", libc.strerror(libc.int(errno)))
@@ -56,37 +55,3 @@ create_socket :: proc() -> (os.Socket, Error) {
 
 	return tmp, nil
 }
-
-
-Parse_Address_Error :: enum {
-	None = 0,
-	Bad_Address,
-}
-
-endpoint_to_sockaddr :: proc(endpoint: string) -> (sockaddr: os.SOCKADDR, err: Error) {
-	endpoint, ok := net.parse_endpoint(endpoint)
-	if !ok {
-		return {}, .Bad_Address
-	}
-
-	switch a in endpoint.address {
-	case net.IP4_Address:
-		(^os.sockaddr_in)(&sockaddr)^ = os.sockaddr_in {
-			sin_family = u16(os.AF_INET),
-			sin_port = u16be(endpoint.port),
-			sin_addr = transmute(os.in_addr) a,
-			sin_zero = {},
-		}
-	case net.IP6_Address:
-		(^os.sockaddr_in6)(&sockaddr)^ = os.sockaddr_in6 {
-			sin6_family = u16(os.AF_INET),
-			sin6_port = u16be(endpoint.port),
-			sin6_flowinfo = 0,
-			sin6_addr = transmute(os.in6_addr) a,
-			sin6_scope_id = 0,
-		}
-	}
-
-	return
-}
-

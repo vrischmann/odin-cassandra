@@ -3,6 +3,7 @@ package cql
 import "core:fmt"
 import "core:io"
 import "core:log"
+import "core:net"
 import "core:os"
 import "core:runtime"
 
@@ -16,6 +17,8 @@ Connection_Error :: union #shared_nil {
 	mio.OS_Error,
 	Process_Error,
 }
+
+connection_sequence: u64 = 0
 
 Connection :: struct {
 	id: Connection_Id,
@@ -36,22 +39,49 @@ Connection :: struct {
 	},
 }
 
-new_connection :: proc(id: Connection_Id, ring: ^mio.ring, socket: os.Socket) -> (res: Connection, err: Connection_Error) {
-	res = Connection{
-		id = id,
-		completion_count = 0,
-		ring = ring,
-		socket = socket,
-		state = {},
+connect_endpoint :: proc(ring: ^mio.ring, conn: ^Connection, endpoint: net.Endpoint) -> (err: Connection_Error) {
+	// Prepare the SOCKADDR
+	sockaddr: os.SOCKADDR = {}
+	switch a in endpoint.address {
+	case net.IP4_Address:
+		(^os.sockaddr_in)(&sockaddr)^ = os.sockaddr_in {
+			sin_family = u16(os.AF_INET),
+			sin_port = u16be(endpoint.port),
+			sin_addr = transmute(os.in_addr) a,
+			sin_zero = {},
+		}
+	case net.IP6_Address:
+		(^os.sockaddr_in6)(&sockaddr)^ = os.sockaddr_in6 {
+			sin6_family = u16(os.AF_INET),
+			sin6_port = u16be(endpoint.port),
+			sin6_flowinfo = 0,
+			sin6_addr = transmute(os.in6_addr) a,
+			sin6_scope_id = 0,
+		}
 	}
 
-	reserve(&res.state.buf, 4096) or_return
-	resize(&res.state.buf, 0) or_return
+	// TODO(vincent): prep the connect SQE etc
 
-	append(&res.state.buf, "hello from Odin !")
-
-	return res, nil
+	return nil
 }
+
+init_connection :: proc(ring: ^mio.ring, conn: ^Connection, id: Connection_Id) -> (err: Connection_Error) {
+	conn.id = id
+	conn.completion_count = 0
+	conn.ring = ring
+	conn.socket = mio.create_socket() or_return
+	conn.state = {}
+
+	reserve(&conn.state.buf, 4096) or_return
+	resize(&conn.state.buf, 0) or_return
+
+	return nil
+}
+
+destroy_connection :: proc(conn: ^Connection) {
+	delete(conn.state.buf)
+}
+
 
 process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	conn.completion_count += 1
