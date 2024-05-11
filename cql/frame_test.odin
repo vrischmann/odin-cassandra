@@ -85,7 +85,7 @@ test_parse_envelope_invalid_body :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_build_envelope :: proc(t: ^testing.T) {
+test_envelope_append :: proc(t: ^testing.T) {
 	body := [dynamic]byte{}
 	defer delete(body)
 
