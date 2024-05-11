@@ -1,3 +1,7 @@
+# Build and test binaries
 *.bin
-odin-cassandra
+cqlcli
+cql
+mio
+
 perf.data*

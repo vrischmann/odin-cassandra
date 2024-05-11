@@ -2,16 +2,13 @@ clean:
 	rm odin-cassandra
 	rm *.bin
 
-build:
-	odin build . -debug
-
 vet:
-	odin build . -vet -debug
-	odin build cqlcli -debug
+	odin build lib -collection:cassandra=lib -vet -debug
+	odin build cmd/cqlcli -collection:cassandra=lib -vet -debug
 
 build-cli:
-	odin build cqlcli -debug
+	odin build cmd/cqlcli -collection:cassandra=lib -debug
 
 test:
-	odin test . -debug
-	odin test cql -debug
+	odin test lib/cql -collection:cassandra=lib -debug
+	odin test lib/mio -collection:cassandra=lib -debug
