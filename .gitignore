@@ -1,7 +1,7 @@
 # Build and test binaries
 *.bin
-cqlcli
-cql
-mio
+/cqlcli
+/cql
+/mio
 
 perf.data*
