@@ -18,6 +18,7 @@ Cli_Error :: enum {
 }
 
 Error :: union #shared_nil {
+	mio.OS_Error,
 	cql.Connection_Error,
 	Cli_Error,
 }
@@ -61,31 +62,29 @@ do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
 }
 
 run_repl :: proc(repl: ^REPL) -> (err: Error) {
+	// Process CQE callback
+	// callback :: proc(cqe: ^mio.io_uring_cqe) {
+	// }
+
 	// Submit SQEs, process CQEs
-	tick :: proc(repl: ^REPL, #any_int nr_wait: u32) -> Error {
-		CQES :: 16
-		cqes: [CQES]^mio.io_uring_cqe = {}
-
-		res := mio.submit_and_wait(&repl.ring.underlying, nr_wait)
-		if res < 0 {
-			log.fatalf("unable to submit sqes, err: (%d) %v", -res, libc.strerror(libc.int(-res)))
-		}
-
-		count := mio.peek_batch_cqe(&repl.ring.underlying, &cqes[0], CQES)
-		for cqe in cqes[:count] {
+	tick :: proc(repl: ^REPL, nr_wait: int) -> Error {
+		err := mio.ring_submit_and_wait_timeout(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
 
 			if err := cql.process_cqe(conn, cqe); err != nil {
-				log.errorf("unable to process CQE, err: %v", err)
+				log.errorf("unable to process cqe")
 			}
+		})
+		if err != nil {
+			return err
 		}
-
-		mio.cq_advance(&repl.ring.underlying, u32(count))
 
 		return nil
 	}
 
 	//
+
+	pending_cqes := 1
 
 	loop: for {
 		line := linenoise.linenoise("hello> ")
@@ -105,7 +104,7 @@ run_repl :: proc(repl: ^REPL) -> (err: Error) {
 			}
 		}
 
-		tick(repl) or_return
+		tick(repl, pending_cqes) or_return
 	}
 
 	fmt.println("stopped")
@@ -173,10 +172,10 @@ main :: proc() {
 
 	// Initialization
 	ring: mio.ring = {}
-	if err := mio.init_ring(&ring, 1024); err != nil {
+	if err := mio.ring_init(&ring, 1024); err != nil {
 		log.fatalf("unable to create ring, err: %v", err)
 	}
-	defer mio.destroy_ring(&ring)
+	defer mio.ring_destroy(&ring)
 
 	repl: REPL = {}
 	if err := init_repl(&repl, &ring); err != nil {

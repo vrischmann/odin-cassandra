@@ -74,9 +74,8 @@ connect_endpoint :: proc(conn: ^Connection, endpoint: net.Endpoint) -> (err: Con
 	}
 
 	// Arm connection to the endpoint
-	connect_sqe := mio.get_sqe(&conn.ring.underlying);
-	mio.prep_connect(connect_sqe, i32(conn.socket), &sockaddr, size_of(os.SOCKADDR))
-	connect_sqe.user_data = u64(uintptr(conn))
+	sqe := mio.ring_connect(conn.ring, i32(conn.socket), &sockaddr)
+	sqe.user_data = u64(uintptr(conn))
 
 	return nil
 }

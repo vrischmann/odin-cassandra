@@ -3,8 +3,9 @@ package mio
 import "core:c"
 import "core:os"
 
-foreign import uring "system:uring-ffi"
+foreign import uring "system:uring-ffi.a"
 
+@(private)
 kernel_timespec :: struct {
 	tv_sec: i64,
 	tv_nsec: i64,
@@ -148,19 +149,16 @@ io_uring :: struct {
 	pad2: c.uint,
 }
 
-IORING_OP_CONNECT :: 16
-
-@(link_prefix = "io_uring_")
+@(private, link_prefix = "io_uring_")
 foreign uring {
-	@(private)
 	queue_init :: proc(entries: c.uint32_t, ring: ^io_uring, flags: c.uint) -> c.int ---
-	@(private)
 	queue_exit :: proc(ring: ^io_uring) ---
 
 	get_sqe :: proc(ring: ^io_uring) -> ^io_uring_sqe ---
 
 	submit :: proc(ring: ^io_uring) -> c.int ---
 	submit_and_wait :: proc(ring: ^io_uring, wait_nr: c.uint) -> c.int ---
+	submit_and_wait_timeout :: proc(ring: ^io_uring, wait_nr: c.uint, ts: ^kernel_timespec, sigmask: ^os.sigset_t) -> c.int ---
 	peek_cqe :: proc(ring: ^io_uring, cqe: ^^io_uring_cqe) -> c.int ---
 	peek_batch_cqe :: proc(ring: ^io_uring, cqes: ^^io_uring_cqe, count: c.uint) -> c.int ---
 	cq_advance :: proc(ring: ^io_uring, nr: c.uint) ---
