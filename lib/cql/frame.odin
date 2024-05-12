@@ -7,12 +7,6 @@ import mathbits "core:math/bits"
 import "core:net"
 import "core:runtime"
 
-Error :: union #shared_nil {
-	runtime.Allocator_Error,
-	Envelope_Parse_Error,
-	Envelope_Body_Build_Error,
-}
-
 UncompressedFrame :: struct {
 }
 
@@ -82,7 +76,13 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 	}
 
 	hdr: EnvelopeHeader = {}
-	hdr.version = ProtocolVersion(data[0])
+
+	if data[0] & 0x80 == 0x80 {
+		hdr.version = ProtocolVersion(data[0] & ~u8(0x80))
+	} else {
+		hdr.version = ProtocolVersion(data[0])
+	}
+
 	hdr.flags = data[1]
 	hdr.stream  = endian.get_u16(data[2:4], .Big) or_else 0xAAAA
 	hdr.opcode = Opcode(data[4])

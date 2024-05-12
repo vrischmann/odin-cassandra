@@ -25,7 +25,7 @@ Cli_Error :: enum {
 Error :: union #shared_nil {
 	runtime.Allocator_Error,
 	mio.Error,
-	cql.Connection_Error,
+	cql.Error,
 	Cli_Error,
 }
 

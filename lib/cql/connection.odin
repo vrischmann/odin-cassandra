@@ -12,11 +12,13 @@ import "cassandra:mio"
 
 Connection_Id :: distinct int
 
-Connection_Error :: union #shared_nil {
+Error :: union #shared_nil {
 	runtime.Allocator_Error,
 	io.Error,
 	mio.Error,
 	Process_Error,
+	Envelope_Parse_Error,
+	Envelope_Body_Build_Error,
 }
 
 Connection_Stage :: enum {
@@ -48,6 +50,7 @@ Connection :: struct {
 	// Set to true when the connection has closed its socket
 	// TODO(vincent): maybe don't do this ?
 	closed: bool,
+	framing_enabled: bool,
 
 	// Low level stuff used to drive io_uring
 	socket: os.Socket,
@@ -61,7 +64,7 @@ Connection :: struct {
 	stream: u16,
 }
 
-connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Connection_Error) {
+connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Error) {
 	// Set provided fields
 	conn.ring = ring
 	conn.id = id
@@ -101,7 +104,7 @@ connection_destroy :: proc(conn: ^Connection) {
 	delete(conn.buf)
 }
 
-connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Connection_Error) {
+connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Error) {
 	log.info("prepping graceful shutdown")
 
 	conn.stage = .Graceful_Shutdown
@@ -129,7 +132,13 @@ Processing_Result :: enum {
 	Shutdown,
 }
 
-process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processing_Result, err: Connection_Error) {
+@(private)
+Process_Error :: enum {
+	None = 0,
+	Invalid_Stage,
+}
+
+process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processing_Result, err: Error) {
 	#partial switch conn.stage {
 	case .Create_Socket:
 		handle_create_socket(conn, cqe) or_return
@@ -141,7 +150,7 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 		handle_write_frame(conn, cqe) or_return
 		return .Frame_Written, nil
 	case .Read_Frame:
-		handle_read(conn, cqe) or_return
+		handle_read_frame(conn, cqe) or_return
 		return .Frame_Read, nil
 	case .Graceful_Shutdown:
 		handle_graceful_shutdown(conn, cqe) or_return
@@ -153,13 +162,7 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 }
 
 @(private)
-Process_Error :: enum {
-	None = 0,
-	Invalid_Stage,
-}
-
-@(private)
-handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
@@ -210,7 +213,7 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Conne
 }
 
 @(private)
-handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	log.infof("%v", cqe)
 
 	if cqe.res != 0 {
@@ -224,7 +227,7 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 	conn.stage = .Write_Frame
 
 	options_hdr: EnvelopeHeader = {}
-	options_hdr.version = .V4
+	options_hdr.version = .V5
 	options_hdr.flags = 0
 	options_hdr.stream = conn.stream
 	options_hdr.opcode = .OPTIONS
@@ -249,7 +252,7 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 }
 
 @(private)
-handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
@@ -283,7 +286,7 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 }
 
 @(private)
-handle_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
@@ -300,6 +303,16 @@ handle_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Err
 
 	read_data := conn.buf[0:n]
 	log.infof("read data: %q", string(read_data))
+
+	if conn.framing_enabled {
+		unimplemented("not implemented")
+	} else {
+
+		envelope := parse_envelope(read_data) or_return
+
+		fmt.printf("envelope: %v", envelope)
+	}
+
 
 	clear(&conn.buf)
 
@@ -336,7 +349,7 @@ handle_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Err
 // }
 
 @(private)
-handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	log.infof("%v", cqe)
 
 	if cqe.res == 0 {
