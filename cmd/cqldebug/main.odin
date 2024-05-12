@@ -78,6 +78,40 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	issue_stdin_poll := true
 	pending := 0
 
+	process_cqe :: proc(cqe: ^mio.io_uring_cqe) {
+		repl := (^REPL)(context.user_ptr)
+
+		switch cqe.user_data {
+		case 1:
+			// stdin is ready
+			line := linenoise.linenoiseEditFeed(&repl.ls)
+			if line == linenoise.linenoiseEditMore {
+				return
+			}
+
+			// either we got a line or the user has exited; reset the state
+			linenoise.linenoiseEditStop(&repl.ls)
+
+			if line == nil {
+				repl.running = false
+				return
+			}
+
+			defer linenoise.linenoiseFree(transmute(rawptr) line)
+
+			fmt.printf("you wrote: %q\n", line)
+
+			repl_init_linenoise(repl)
+
+		case:
+			conn := (^cql.Connection)(uintptr(cqe.user_data))
+
+			if err := cql.process_cqe(conn, cqe); err != nil {
+				log.errorf("unable to process cqe")
+			}
+		}
+	}
+
 	for repl.running {
 		// Issue a multishot poll on stdin if necessary
 
@@ -90,44 +124,11 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 		nr_wait := max(1, pending)
 
+
+		// Provide the repl as context so that we can access it in process_cqe
 		context.user_ptr = rawptr(repl)
 
-		err := mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
-			repl := (^REPL)(context.user_ptr)
-
-			switch cqe.user_data {
-			case 1:
-				// stdin is ready
-				line := linenoise.linenoiseEditFeed(&repl.ls)
-				if line == linenoise.linenoiseEditMore {
-					return
-				}
-
-				// either we got a line or the user has exited; reset the state
-				linenoise.linenoiseEditStop(&repl.ls)
-
-				if line == nil {
-					repl.running = false
-					return
-				}
-
-				defer linenoise.linenoiseFree(transmute(rawptr) line)
-
-				fmt.printf("you wrote: %q\n", line)
-
-				repl_init_linenoise(repl)
-
-			case:
-				conn := (^cql.Connection)(uintptr(cqe.user_data))
-
-				if err := cql.process_cqe(conn, cqe); err != nil {
-					log.errorf("unable to process cqe")
-				}
-			}
-		})
-		if err != nil {
-			return err
-		}
+		mio.ring_submit_and_wait(repl.ring, nr_wait, process_cqe) or_return
 
 		context.user_ptr = nil
 	}
