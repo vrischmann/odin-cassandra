@@ -139,6 +139,9 @@ Process_Error :: enum {
 }
 
 process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processing_Result, err: Error) {
+	// TODO(vincent): add a more high-level "handshake" stage ?
+	// TODO(vincent): also can we only return a subset of interesting processing results ?
+
 	#partial switch conn.stage {
 	case .Create_Socket:
 		handle_create_socket(conn, cqe) or_return
