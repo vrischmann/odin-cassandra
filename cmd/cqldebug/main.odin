@@ -16,17 +16,52 @@ Error :: union #shared_nil {
 	cql.Connection_Error,
 }
 
+tick :: proc(ring: ^mio.ring) -> Error {
+	CQES :: 16
+	cqes: [CQES]^mio.io_uring_cqe = {}
+
+	for {
+		res := mio.submit_and_wait(&ring.underlying, 1)
+		if res < 0 {
+			log.fatalf("unable to submit sqes, err: (%d) %v", -res, libc.strerror(libc.int(-res)))
+		}
+
+		count := mio.peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
+		for cqe in cqes[:count] {
+			conn := (^cql.Connection)(uintptr(cqe.user_data))
+
+			if err := cql.process_cqe(conn, cqe); err != nil {
+				log.errorf("unable to process CQE, err: %v", err)
+			}
+		}
+
+		mio.cq_advance(&ring.underlying, u32(count))
+	}
+}
+
+
 runREPL :: proc(ring: ^mio.ring, connection: ^cql.Connection) -> (err: Error) {
 
 	loop: for {
+		tick(ring) or_return
+
 		line := linenoise.linenoise("hello> ")
 		if line == nil {
 			break loop
 		}
-		defer linenoise.linenoiseFree(line)
+		defer linenoise.linenoiseFree(transmute(rawptr) line)
 
 		fmt.printf("you wrote: %s\n", line)
+
+		switch line {
+		case "startup":
+			do_startup(ring)
+		}
 	}
+
+	fmt.println("stopped")
+
+	return nil
 }
 
 main :: proc() {
@@ -59,6 +94,7 @@ main :: proc() {
 
 	// Setup logger
 	context.logger = log.create_console_logger()
+	defer log.destroy_console_logger(context.logger)
 
 	// Setup our own context
 	// my_context : MyContext = {}
@@ -101,15 +137,14 @@ main :: proc() {
 	if err := cql.init_connection(&ring, &conn, 200); err != nil {
 		log.fatalf("unable to initialize connection, err: %v", err)
 	}
-
-	if conn_err := cql.connect_endpoint(&ring, &conn, endpoint); conn_err != nil {
-		log.fatalf("unable to create new connection, err: %v", conn_err)
-	}
 	defer cql.destroy_connection(&conn)
+
+	if err := cql.connect_endpoint(&conn, endpoint); err != nil {
+		log.fatalf("unable to create new connection, err: %v", err)
+	}
 
 	// Run the client
 	if err := runREPL(&ring, &conn); err != nil {
 		log.fatalf("unable to run, err: %v", err)
 	}
-	fmt.println("stopped")
 }

@@ -1,6 +1,6 @@
 # Build and test binaries
 *.bin
-/cqlcli
+/cqldebug
 /cql
 /mio
 

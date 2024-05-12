@@ -29,7 +29,7 @@ Connection :: struct {
 
 	state: struct {
 		op: enum {
-			None = 0,
+			Connect = 0,
 			Write = 1,
 			Read = 2,
 			Timeout = 3,
@@ -39,7 +39,20 @@ Connection :: struct {
 	},
 }
 
-connect_endpoint :: proc(ring: ^mio.ring, conn: ^Connection, endpoint: net.Endpoint) -> (err: Connection_Error) {
+init_connection :: proc(ring: ^mio.ring, conn: ^Connection, id: Connection_Id) -> (err: Connection_Error) {
+	conn.id = id
+	conn.completion_count = 0
+	conn.ring = ring
+	conn.socket = mio.create_socket() or_return
+	conn.state = {}
+
+	reserve(&conn.state.buf, 4096) or_return
+	resize(&conn.state.buf, 0) or_return
+
+	return nil
+}
+
+connect_endpoint :: proc(conn: ^Connection, endpoint: net.Endpoint) -> (err: Connection_Error) {
 	// Prepare the SOCKADDR
 	sockaddr: os.SOCKADDR = {}
 	switch a in endpoint.address {
@@ -60,20 +73,10 @@ connect_endpoint :: proc(ring: ^mio.ring, conn: ^Connection, endpoint: net.Endpo
 		}
 	}
 
-	// TODO(vincent): prep the connect SQE etc
-
-	return nil
-}
-
-init_connection :: proc(ring: ^mio.ring, conn: ^Connection, id: Connection_Id) -> (err: Connection_Error) {
-	conn.id = id
-	conn.completion_count = 0
-	conn.ring = ring
-	conn.socket = mio.create_socket() or_return
-	conn.state = {}
-
-	reserve(&conn.state.buf, 4096) or_return
-	resize(&conn.state.buf, 0) or_return
+	// Arm connection to the endpoint
+	connect_sqe := mio.get_sqe(&conn.ring.underlying);
+	mio.prep_connect(connect_sqe, i32(conn.socket), &sockaddr, size_of(os.SOCKADDR))
+	connect_sqe.user_data = u64(uintptr(conn))
 
 	return nil
 }
@@ -82,12 +85,11 @@ destroy_connection :: proc(conn: ^Connection) {
 	delete(conn.state.buf)
 }
 
-
 process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	conn.completion_count += 1
 
 	switch conn.state.op {
-	case .None:
+	case .Connect:
 		return process_cqe_connect(conn, cqe)
 	case .Write:
 		return process_cqe_write(conn, cqe)
@@ -100,11 +102,13 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Err
 	}
 }
 
+@(private)
 Process_Error :: enum {
 	None = 0,
 	Invalid_Op,
 }
 
+@(private)
 process_cqe_connect :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	log.infof("[OP: connect]: %v", cqe)
 
@@ -125,6 +129,7 @@ process_cqe_connect :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connec
 	return nil
 }
 
+@(private)
 process_cqe_write :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	log.infof("[OP: write]: %v", cqe)
 
@@ -159,6 +164,7 @@ process_cqe_write :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connecti
 	return nil
 }
 
+@(private)
 process_cqe_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	log.infof("[OP: read]: %+v", cqe)
 
@@ -197,6 +203,7 @@ process_cqe_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connectio
 	return nil
 }
 
+@(private)
 process_cqe_timeout :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	log.infof("[OP: timeout]: %+v", cqe)
 
