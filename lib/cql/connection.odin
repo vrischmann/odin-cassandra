@@ -30,10 +30,16 @@ Connection_Stage :: enum {
 }
 
 Connection :: struct {
-	// These fields are provided by the caller either in [init_connection] or [connect_endpoint]
-	id: Connection_Id,
+	// These fields are mandatory and must be provided by the caller either in [init_connection] or [connect_endpoint]
 	ring: ^mio.ring,
+	id: Connection_Id,
 	endpoint: net.Endpoint,
+
+	// These fields are optional but can be set by the caller
+	connect_timeout: time.Duration,
+	read_timeout: time.Duration,
+	write_timeout: time.Duration,
+
 
 	// These fields are created and managed by the connection itself
 
@@ -55,10 +61,18 @@ Connection :: struct {
 	stream: u16,
 }
 
-connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id) -> (err: Connection_Error) {
-	conn.id = id
+connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Connection_Error) {
+	// Set provided fields
 	conn.ring = ring
-	conn.stage = .Create_Socket
+	conn.id = id
+	conn.endpoint = endpoint
+
+	// Set default values
+	conn.connect_timeout = 1 * time.Second
+	conn.read_timeout = 1 * time.Second
+	conn.write_timeout = 1 * time.Second
+
+	// Initialize state
 	conn.buf = {}
 	// TODO(vincent): handle multiple streams
 	conn.stream = 10000
@@ -66,11 +80,8 @@ connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id) -
 	reserve(&conn.buf, 4096) or_return
 	resize(&conn.buf, 0) or_return
 
-	return nil
-}
-
-connect_endpoint :: proc(conn: ^Connection, endpoint: net.Endpoint) -> (err: Connection_Error) {
-	conn.endpoint = endpoint
+	// Prep the state machine and begin the work
+	conn.stage = .Create_Socket
 
 	domain: int = 0
 	switch _ in endpoint.address {
@@ -79,7 +90,6 @@ connect_endpoint :: proc(conn: ^Connection, endpoint: net.Endpoint) -> (err: Con
 	case net.IP6_Address:
 		domain = os.AF_INET6
 	}
-
 
 	sqe := mio.ring_socket(conn.ring, domain, os.SOCK_STREAM, 0, 0)
 	sqe.user_data = u64(uintptr(conn))
@@ -137,6 +147,7 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 		handle_graceful_shutdown(conn, cqe) or_return
 		return .Shutdown, nil
 	case:
+		log.errorf("stage is %q", conn.stage)
 		return .Invalid, .Invalid_Stage
 	}
 }
@@ -225,7 +236,14 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
 
 	sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
+	sqe.flags |= mio.IOSQE_IO_LINK
 	sqe.user_data = u64(uintptr(conn))
+
+	conn.timeout = {}
+	conn.timeout.tv_nsec = i64(1 * time.Second)
+
+	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
+	timeout_sqe.user_data = 20
 
 	return nil
 }

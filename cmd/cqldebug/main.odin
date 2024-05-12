@@ -40,7 +40,8 @@ REPL :: struct {
 	pending: int, // TODO(vincent): this doesn't seem useful ?
 	last_submit_time: time.Time,
 
-	connections: [dynamic]cql.Connection,
+	// TODO(vincent): implement some client abstraction to talk over multiple connections to multiple servers
+	conn: cql.Connection,
 }
 
 repl_init :: proc(repl: ^REPL, history_filename: string, ring: ^mio.ring) -> (err: Error) {
@@ -82,27 +83,15 @@ repl_linenoise_reset :: proc(repl: ^REPL) {
 }
 
 repl_destroy :: proc(repl: ^REPL) {
-	for &conn in repl.connections {
-		cql.connection_destroy(&conn)
-	}
-	delete(repl.connections)
+	cql.connection_destroy(&repl.conn)
 }
 
 repl_reap_closed_connections :: proc(repl: ^REPL) {
 	delete_queue := make([dynamic]int, allocator = context.temp_allocator)
 
-	for &conn, i in repl.connections {
-		if conn.closed {
-			log.infof("reaping connection %v", conn)
-
-			append(&delete_queue, i)
-			cql.connection_destroy(&conn)
-		}
-	}
-
-	for len(delete_queue) > 0 {
-		i := pop(&delete_queue)
-		unordered_remove(&repl.connections, i)
+	if repl.conn.closed {
+		log.infof("reaping connection %v", repl.conn)
+		cql.connection_destroy(&repl.conn)
 	}
 }
 
@@ -134,15 +123,7 @@ repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
 		save_line = true
 
 		// Create and open the connection
-
-		conn: cql.Connection = {}
-		conn_id := cql.Connection_Id(len(repl.connections))
-		cql.connection_init(&conn, repl.ring, conn_id) or_return
-
-		append(&repl.connections, conn) or_return
-		conn_idx := len(repl.connections) - 1
-
-		cql.connect_endpoint(&repl.connections[conn_idx], endpoint) or_return
+		cql.connection_init(&repl.conn, repl.ring, 1, endpoint) or_return
 	}
 
 	if save_line {
