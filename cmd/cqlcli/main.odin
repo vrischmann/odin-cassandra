@@ -91,24 +91,24 @@ main :: proc() {
 	}
 
 	// Initialization
-	ring, ring_err := mio.new_ring(1024)
-	if ring_err != nil {
-		log.fatalf("unable to create ring, err: %v", ring_err)
+	ring: mio.ring = {}
+	if err := mio.init_ring(&ring, 1024); err != nil {
+		log.fatalf("unable to create ring, err: %v", err)
 	}
-	defer mio.destroy_ring(ring)
+	defer mio.destroy_ring(&ring)
 
 	conn: cql.Connection = {}
-	if err := cql.init_connection(ring, &conn, 200); err != nil {
+	if err := cql.init_connection(&ring, &conn, 200); err != nil {
 		log.fatalf("unable to initialize connection, err: %v", err)
 	}
 
-	if conn_err := cql.connect_endpoint(ring, &conn, endpoint); conn_err != nil {
+	if conn_err := cql.connect_endpoint(&ring, &conn, endpoint); conn_err != nil {
 		log.fatalf("unable to create new connection, err: %v", conn_err)
 	}
 	defer cql.destroy_connection(&conn)
 
 	// Run the client
-	if err := runREPL(ring, &conn); err != nil {
+	if err := runREPL(&ring, &conn); err != nil {
 		log.fatalf("unable to run, err: %v", err)
 	}
 	fmt.println("stopped")

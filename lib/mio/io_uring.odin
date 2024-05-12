@@ -12,25 +12,22 @@ ring :: struct {
 	underlying: io_uring,
 }
 
-new_ring :: proc(entries: int) -> (^ring, Error) {
-	res := new(ring)
-
-	errno := queue_init(c.uint32_t(entries), &res.underlying, 0)
+init_ring :: proc(ring: ^ring, entries: int) -> (Error) {
+	errno := queue_init(c.uint32_t(entries), &ring.underlying, 0)
 	if errno < 0 {
-		return nil, os_err_from_errno(-errno)
+		return os_err_from_errno(-errno)
 	}
 
 	log.debugf("ring fd: %v, flags: %v. sb entries=%d, cq entries=%d",
-		res.underlying.ring_fd,
-		res.underlying.flags,
-		res.underlying.sq.ring_entries,
-		res.underlying.cq.ring_entries,
+		ring.underlying.ring_fd,
+		ring.underlying.flags,
+		ring.underlying.sq.ring_entries,
+		ring.underlying.cq.ring_entries,
 	)
 
-	return res, nil
+	return nil
 }
 
 destroy_ring :: proc(ring: ^ring) {
 	queue_exit(&ring.underlying)
-	free(ring)
 }
