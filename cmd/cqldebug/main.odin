@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import "core:c"
 import "core:c/libc"
 import "core:fmt"
@@ -21,6 +22,7 @@ Cli_Error :: enum {
 }
 
 Error :: union #shared_nil {
+	runtime.Allocator_Error,
 	mio.Error,
 	cql.Connection_Error,
 	Cli_Error,
@@ -84,53 +86,58 @@ repl_destroy :: proc(repl: ^REPL) {
 	delete(repl.connections)
 }
 
-do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
-	endpoint, ok := net.parse_endpoint(endpoint_str)
-	if !ok {
-		log.fatalf("invalid endpoint %v", endpoint_str)
-		return .Invalid_Endpoint
-	}
-
-	//
-
-	new_connection_id := len(repl.connections)
-
-	conn: cql.Connection = {}
-	cql.init_connection(&conn, repl.ring, cql.Connection_Id(new_connection_id)) or_return
-	append(&repl.connections, conn)
-
-	cql.connect_endpoint(&conn, endpoint) or_return
-
-	return nil
-}
-
-repl_process_line :: proc(repl: ^REPL, line: string) {
+repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
+	save_line := false
 	line := strings.trim_space(line)
+
+	sb := strings.builder_make_none(allocator = context.temp_allocator)
 
 	switch {
 	case strings.has_prefix(line, "connect"):
-		endpoint := strings.trim_space(line[len("connect"):])
-		if len(endpoint) <= 0 {
-			fmt.println("Usage: connect <hostname>")
+		//
+		// Command: connect <hostname>
+		//
+
+		endpoint_str := strings.trim_space(line[len("connect"):])
+		if len(endpoint_str) <= 0 {
+			fmt.eprintfln("\x1b[1mUsage\x1b[0m: connect <hostname>")
 			return
 		}
 
-		fmt.printf("endpoint: %v\n", endpoint)
+		endpoint, ok := net.parse_endpoint(endpoint_str)
+		if !ok {
+			fmt.eprintfln("\x1b[1m\x1b[31mendpoint is invalid\x1b[0m\x1b[22m")
+			return
+		}
 
+		save_line = true
 
+		//
+
+		conn: cql.Connection = {}
+		conn_id := cql.Connection_Id(len(repl.connections))
+		cql.init_connection(&conn, repl.ring, conn_id) or_return
+
+		append(&repl.connections, conn) or_return
+		conn_idx := len(repl.connections) - 1
+
+		cql.connect_endpoint(&repl.connections[conn_idx], endpoint) or_return
+	}
+
+	if save_line {
 		cline := strings.clone_to_cstring(line, context.temp_allocator)
 		history_filename := strings.clone_to_cstring(repl.ls_history_filename, context.temp_allocator)
 
 		linenoise.linenoiseHistoryAdd(cline)
 		linenoise.linenoiseHistorySave(history_filename)
 	}
+
+	return nil
 }
 
 
 repl_run :: proc(repl: ^REPL) -> (err: Error) {
-	process_cqe :: proc(cqe: ^mio.io_uring_cqe) {
-		repl := (^REPL)(context.user_ptr)
-
+	process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 		switch cqe.user_data {
 		case 1:
 			// stdin is ready
@@ -149,18 +156,19 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 			defer linenoise.linenoiseFree(transmute(rawptr) line)
 
-			fmt.printf("you wrote: %q\n", line)
-
-			repl_process_line(repl, string(line))
+			repl_process_line(repl, string(line)) or_return
 			repl_linenoise_reset(repl)
 
 		case:
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
 
-			if err := cql.process_cqe(conn, cqe); err != nil {
-				log.errorf("unable to process cqe")
-			}
+			linenoise.linenoiseHide(&repl.ls)
+			defer linenoise.linenoiseShow(&repl.ls)
+
+			cql.process_cqe(conn, cqe) or_return
 		}
+
+		return nil
 	}
 
 	issue_stdin_poll := true
@@ -177,22 +185,15 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 		// Provide the repl as context so that we can access it in process_cqe
 		context.user_ptr = rawptr(repl)
-		mio.ring_submit_and_wait(repl.ring, nr_wait, process_cqe) or_return
+		mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
+			repl := (^REPL)(context.user_ptr)
+
+			if err := process_cqe(repl, cqe); err != nil {
+				fmt.eprintfln("unable to process CQE, err: %v", err)
+			}
+		}) or_return
 		context.user_ptr = nil
 	}
-
-	// for {
-	// 	switch line {
-	// 	case "connect":
-	// 		endpoint_str := string(line)
-	//
-	// 		if err := do_connect(repl, endpoint_str); err != nil {
-	// 			fmt.printf("unable to connect, err: %v\n", err)
-	// 		}
-	// 	}
-	//
-	// 	tick(repl, pending_cqes) or_return
-	// }
 
 	fmt.println("stopped")
 
@@ -228,8 +229,14 @@ main :: proc() {
 	}
 
 	// Setup logger
-	context.logger = log.create_console_logger()
-	defer log.destroy_console_logger(context.logger)
+	log_file, log_file_errno := os.open(".cqldebug.log", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o0644)
+	if log_file_errno != 0 {
+		log.fatalf("unable to open log file, err: %v", log_file_errno)
+	}
+
+	logger := log.create_file_logger(log_file)
+	defer log.destroy_file_logger(&logger)
+	context.logger = logger
 
 	// Setup our own context
 	// my_context : MyContext = {}
@@ -261,6 +268,7 @@ main :: proc() {
 	if err := repl_init(&repl, history_filename, &ring); err != nil {
 		log.fatalf("unable to initialize the repl, err: %v", err)
 	}
+	defer repl_destroy(&repl)
 
 	// Run the client
 	if err := repl_run(&repl); err != nil {
