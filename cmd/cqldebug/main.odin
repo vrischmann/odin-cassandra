@@ -6,6 +6,7 @@ import "core:log"
 import "core:mem"
 import "core:net"
 import "core:os"
+import "core:strings"
 import "core:sys/linux"
 import "core:sys/unix"
 
@@ -30,6 +31,7 @@ REPL :: struct {
 	ls: linenoise.linenoiseState,
 	ls_buf: [1024]byte,
 	running: bool,
+	pending: int,
 
 	connections: [dynamic]cql.Connection,
 }
@@ -39,6 +41,7 @@ repl_init :: proc(repl: ^REPL, ring: ^mio.ring) -> (err: Error) {
 
 	repl_init_linenoise(repl)
 	repl.running = true
+	repl.pending = 0
 
 	return nil
 }
@@ -75,8 +78,20 @@ do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
 }
 
 repl_run :: proc(repl: ^REPL) -> (err: Error) {
-	issue_stdin_poll := true
-	pending := 0
+	process_line :: proc(repl: ^REPL, line: string) {
+		line := strings.trim_space(line)
+
+		switch {
+		case strings.has_prefix(line, "connect"):
+			endpoint := strings.trim_space(line[len("connect"):])
+			if len(endpoint) <= 0 {
+				fmt.println("Usage: connect <hostname>")
+				return
+			}
+
+			fmt.printf("endpoint: %v\n", endpoint)
+		}
+	}
 
 	process_cqe :: proc(cqe: ^mio.io_uring_cqe) {
 		repl := (^REPL)(context.user_ptr)
@@ -101,6 +116,8 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 			fmt.printf("you wrote: %q\n", line)
 
+			process_line(repl, string(line))
+
 			repl_init_linenoise(repl)
 
 		case:
@@ -112,9 +129,9 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		}
 	}
 
+	issue_stdin_poll := true
 	for repl.running {
 		// Issue a multishot poll on stdin if necessary
-
 		if issue_stdin_poll {
 			sqe := mio.ring_poll_multishot(repl.ring, 1, unix.POLLIN)
 			sqe.user_data = 1
@@ -122,14 +139,11 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 			issue_stdin_poll = false
 		}
 
-		nr_wait := max(1, pending)
-
+		nr_wait := max(1, repl.pending)
 
 		// Provide the repl as context so that we can access it in process_cqe
 		context.user_ptr = rawptr(repl)
-
 		mio.ring_submit_and_wait(repl.ring, nr_wait, process_cqe) or_return
-
 		context.user_ptr = nil
 	}
 
@@ -199,15 +213,6 @@ main :: proc() {
 	//
 	//
 	//
-
-	// TODO(vincent): flag parsing and stuff
-
-	// if len(os.args) < 1 {
-	// 	log.fatal("Please provide the hostname: cqlcli <hostname>")
-	// }
-	// hostname := os.args[0]
-	hostname := "127.0.0.1:9042"
-
 
 	// Initialization
 	ring: mio.ring = {}
