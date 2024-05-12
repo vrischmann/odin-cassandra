@@ -39,7 +39,7 @@ Connection :: struct {
 	},
 }
 
-init_connection :: proc(ring: ^mio.ring, conn: ^Connection, id: Connection_Id) -> (err: Connection_Error) {
+init_connection :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id) -> (err: Connection_Error) {
 	conn.id = id
 	conn.completion_count = 0
 	conn.ring = ring

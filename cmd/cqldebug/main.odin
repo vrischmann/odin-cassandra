@@ -12,21 +12,66 @@ import "cassandra:cql"
 import "cassandra:linenoise"
 import "cassandra:mio"
 
-Error :: union #shared_nil {
-	cql.Connection_Error,
+Cli_Error :: enum {
+	None = 0,
+	Invalid_Endpoint = 1,
 }
 
-tick :: proc(ring: ^mio.ring) -> Error {
-	CQES :: 16
-	cqes: [CQES]^mio.io_uring_cqe = {}
+Error :: union #shared_nil {
+	cql.Connection_Error,
+	Cli_Error,
+}
 
-	for {
-		res := mio.submit_and_wait(&ring.underlying, 1)
+REPL :: struct {
+	ring: ^mio.ring,
+
+	connections: [dynamic]cql.Connection,
+}
+
+init_repl :: proc(repl: ^REPL, ring: ^mio.ring) -> (err: Error) {
+	repl.ring = ring
+	return nil
+}
+
+destroy_repl :: proc(repl: ^REPL) {
+	for &conn in repl.connections {
+		cql.destroy_connection(&conn)
+	}
+	delete(repl.connections)
+}
+
+do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
+	endpoint, ok := net.parse_endpoint(endpoint_str)
+	if !ok {
+		log.fatalf("invalid endpoint %v", endpoint_str)
+		return .Invalid_Endpoint
+	}
+
+	//
+
+	new_connection_id := len(repl.connections)
+
+	conn: cql.Connection = {}
+	cql.init_connection(&conn, repl.ring, cql.Connection_Id(new_connection_id)) or_return
+	append(&repl.connections, conn)
+
+	cql.connect_endpoint(&conn, endpoint) or_return
+
+	return nil
+}
+
+run_repl :: proc(repl: ^REPL) -> (err: Error) {
+	// Submit SQEs, process CQEs
+	tick :: proc(repl: ^REPL, #any_int nr_wait: u32) -> Error {
+		CQES :: 16
+		cqes: [CQES]^mio.io_uring_cqe = {}
+
+		res := mio.submit_and_wait(&repl.ring.underlying, nr_wait)
 		if res < 0 {
 			log.fatalf("unable to submit sqes, err: (%d) %v", -res, libc.strerror(libc.int(-res)))
 		}
 
-		count := mio.peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
+		count := mio.peek_batch_cqe(&repl.ring.underlying, &cqes[0], CQES)
 		for cqe in cqes[:count] {
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
 
@@ -35,16 +80,14 @@ tick :: proc(ring: ^mio.ring) -> Error {
 			}
 		}
 
-		mio.cq_advance(&ring.underlying, u32(count))
+		mio.cq_advance(&repl.ring.underlying, u32(count))
+
+		return nil
 	}
-}
 
-
-runREPL :: proc(ring: ^mio.ring, connection: ^cql.Connection) -> (err: Error) {
+	//
 
 	loop: for {
-		tick(ring) or_return
-
 		line := linenoise.linenoise("hello> ")
 		if line == nil {
 			break loop
@@ -54,9 +97,15 @@ runREPL :: proc(ring: ^mio.ring, connection: ^cql.Connection) -> (err: Error) {
 		fmt.printf("you wrote: %s\n", line)
 
 		switch line {
-		case "startup":
-			do_startup(ring)
+		case "connect":
+			endpoint_str := string(line)
+
+			if err := do_connect(repl, endpoint_str); err != nil {
+				fmt.printf("unable to connect, err: %v\n", err)
+			}
 		}
+
+		tick(repl) or_return
 	}
 
 	fmt.println("stopped")
@@ -121,10 +170,6 @@ main :: proc() {
 	// hostname := os.args[0]
 	hostname := "127.0.0.1:9042"
 
-	endpoint, ok := net.parse_endpoint(hostname)
-	if !ok {
-		log.fatalf("invalid endpoint %v", hostname)
-	}
 
 	// Initialization
 	ring: mio.ring = {}
@@ -133,18 +178,13 @@ main :: proc() {
 	}
 	defer mio.destroy_ring(&ring)
 
-	conn: cql.Connection = {}
-	if err := cql.init_connection(&ring, &conn, 200); err != nil {
-		log.fatalf("unable to initialize connection, err: %v", err)
-	}
-	defer cql.destroy_connection(&conn)
-
-	if err := cql.connect_endpoint(&conn, endpoint); err != nil {
-		log.fatalf("unable to create new connection, err: %v", err)
+	repl: REPL = {}
+	if err := init_repl(&repl, &ring); err != nil {
+		log.fatalf("unable to initialize the repl, err: %v", err)
 	}
 
 	// Run the client
-	if err := runREPL(&ring, &conn); err != nil {
+	if err := run_repl(&repl); err != nil {
 		log.fatalf("unable to run, err: %v", err)
 	}
 }
