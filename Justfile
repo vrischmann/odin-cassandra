@@ -3,15 +3,15 @@ clean:
 	rm *.bin
 
 vet:
-	odin build lib -collection:cassandra=lib -vet -debug
-	odin build cmd/cqldebug -collection:cassandra=lib -vet -debug
+	odin build lib -collection:cassandra=lib -collection:third_party=third_party -vet -debug
+	odin build cmd/cqldebug -collection:cassandra=lib -collection:third_party=third_party -vet -debug
 
 build-debugcli:
-	odin build cmd/cqldebug -collection:cassandra=lib -debug
+	odin build cmd/cqldebug -collection:cassandra=lib -collection:third_party=third_party -debug
 
 run-debugcli:
-	odin run cmd/cqldebug -collection:cassandra=lib -debug
+	odin run cmd/cqldebug -collection:cassandra=lib -collection:third_party=third_party -debug
 
 test:
-	odin test lib/cql -collection:cassandra=lib -debug
-	odin test lib/mio -collection:cassandra=lib -debug
+	odin test lib/cql -collection:cassandra=lib -collection:third_party=third_party -debug
+	odin test lib/mio -collection:cassandra=lib -collection:third_party=third_party -debug

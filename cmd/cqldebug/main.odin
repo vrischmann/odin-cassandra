@@ -10,8 +10,8 @@ import "core:sys/linux"
 import "core:sys/unix"
 
 import "cassandra:cql"
-import "cassandra:linenoise"
 import "cassandra:mio"
+import "third_party:linenoise"
 
 Cli_Error :: enum {
 	None = 0,

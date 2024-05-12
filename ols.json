@@ -13,6 +13,10 @@
       "name": "cassandra",
       "path": "/home/vincent/dev/perso/projects/odin-cassandra/lib"
     },
+    {
+      "name": "third_party",
+      "path": "/home/vincent/dev/perso/projects/odin-cassandra/third_party"
+    },
   ],
   "enable_semantic_tokens": true,
   "enable_document_symbols": true,
