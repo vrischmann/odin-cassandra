@@ -11,6 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/linux"
 import "core:sys/unix"
+import "core:time"
 
 import "cassandra:cql"
 import "cassandra:mio"
@@ -36,7 +37,8 @@ REPL :: struct {
 	ls_history_filename: string,
 
 	running: bool,
-	pending: int,
+	pending: int, // TODO(vincent): this doesn't seem useful ?
+	last_submit_time: time.Time,
 
 	connections: [dynamic]cql.Connection,
 }
@@ -159,11 +161,23 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 			repl_process_line(repl, string(line)) or_return
 			repl_linenoise_reset(repl)
 
+			if cqe.flags & mio.IORING_CQE_F_MORE == 0 {
+				log.debug("not more")
+			} else {
+				log.debug("has more")
+			}
+
+		case 0:
+			fmt.eprintfln("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
+
 		case:
+
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
 
 			linenoise.linenoiseHide(&repl.ls)
 			defer linenoise.linenoiseShow(&repl.ls)
+
+			fmt.eprintfln("got cqe %v for conn %v", cqe, conn)
 
 			cql.process_cqe(conn, cqe) or_return
 		}
@@ -183,12 +197,25 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 		nr_wait := max(1, repl.pending)
 
+		repl.last_submit_time = time.now()
+
 		// Provide the repl as context so that we can access it in process_cqe
 		context.user_ptr = rawptr(repl)
 		mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			repl := (^REPL)(context.user_ptr)
 
+			{
+				linenoise.linenoiseHide(&repl.ls)
+				defer linenoise.linenoiseShow(&repl.ls)
+
+				elapsed := time.since(repl.last_submit_time)
+				fmt.printfln("elapsed: %s", elapsed)
+			}
+
 			if err := process_cqe(repl, cqe); err != nil {
+				linenoise.linenoiseHide(&repl.ls)
+				defer linenoise.linenoiseShow(&repl.ls)
+
 				fmt.eprintfln("unable to process CQE, err: %v", err)
 			}
 		}) or_return

@@ -5,7 +5,6 @@ import "core:os"
 
 foreign import uring "system:uring-ffi"
 
-@(private)
 kernel_timespec :: struct {
 	tv_sec: i64,
 	tv_nsec: i64,
@@ -149,6 +148,35 @@ io_uring :: struct {
 	pad2: c.uint,
 }
 
+@(private)
+IOSQE_BIT :: enum {
+	IOSQE_FIXED_FILE_BIT,
+	IOSQE_IO_DRAIN_BIT,
+	IOSQE_IO_LINK_BIT,
+	IOSQE_IO_HARDLINK_BIT,
+	IOSQE_ASYNC_BIT,
+	IOSQE_BUFFER_SELECT_BIT,
+	IOSQE_CQE_SKIP_SUCCESS_BIT,
+};
+
+IOSQE_FIXED_FILE :: (1 << uint(IOSQE_BIT.IOSQE_FIXED_FILE_BIT))      // use fixed fileset
+IOSQE_IO_DRAIN :: (1 << uint(IOSQE_BIT.IOSQE_IO_DRAIN_BIT))          // issue after inflight IO
+IOSQE_IO_LINK :: (1 << uint(IOSQE_BIT.IOSQE_IO_LINK_BIT))                      // links next sqe
+IOSQE_IO_HARDLINK :: (1 << uint(IOSQE_BIT.IOSQE_IO_HARDLINK_BIT))              // like LINK, but stronger
+IOSQE_ASYNC :: (1 << uint(IOSQE_BIT.IOSQE_ASYNC_BIT))                          // always go async
+IOSQE_BUFFER_SELECT :: (1 << uint(IOSQE_BIT.IOSQE_BUFFER_SELECT_BIT))          // select buffer from sqe->buf_group
+IOSQE_CQE_SKIP_SUCCESS :: (1 << uint(IOSQE_BIT.IOSQE_CQE_SKIP_SUCCESS_BIT))    // don't post CQE if request succeeded
+
+IORING_TIMEOUT_ABS :: (1 << 0)
+IORING_TIMEOUT_UPDATE :: (1 << 1)
+IORING_TIMEOUT_BOOTTIME :: (1 << 2)
+IORING_TIMEOUT_REALTIME :: (1 << 3)
+
+IORING_CQE_F_BUFFER :: (1 << 0)
+IORING_CQE_F_MORE :: (1 << 1)
+IORING_CQE_F_SOCK_NONEMPTY :: (1 << 2)
+IORING_CQE_F_NOTIF :: (1 << 3)
+
 @(private, link_prefix = "io_uring_")
 foreign uring {
 	queue_init :: proc(entries: c.uint32_t, ring: ^io_uring, flags: c.uint) -> c.int ---
@@ -168,6 +196,7 @@ foreign uring {
 	prep_write :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---
 	prep_read :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---
 	prep_timeout :: proc(sqe: ^io_uring_sqe, ts: ^kernel_timespec, count: c.uint, flags: c.uint) ---
+	prep_link_timeout :: proc(sqe: ^io_uring_sqe, ts: ^kernel_timespec, flags: c.uint) ---
 	prep_poll_multishot :: proc(sqe: ^io_uring_sqe, fd: c.int, poll_mask: c.uint) ---
 
 	// setup :: proc(entries: c.uint32_t, p: ^params) -> c.int ---

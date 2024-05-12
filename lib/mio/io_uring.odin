@@ -17,7 +17,7 @@ ring_init :: proc(ring: ^ring, entries: int) -> (Error) {
 		return os_err_from_errno(-errno)
 	}
 
-	log.debugf("ring fd: %v, flags: %v. sb entries=%d, cq entries=%d",
+	log.debugf("[ring fd: %v] flags: %v. sb entries=%d, cq entries=%d",
 		ring.underlying.ring_fd,
 		ring.underlying.flags,
 		ring.underlying.sq.ring_entries,
@@ -34,6 +34,8 @@ ring_destroy :: proc(ring: ^ring) {
 ring_socket :: proc(ring: ^ring, domain: int, type: int, protocol: int, flags: uint) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
+	log.debugf("[ring fd: %v] prepping socket for domain=%v, type=%v, protocol=%v", ring.underlying.ring_fd, domain, type, protocol)
+
 	prep_socket(sqe, c.int(domain), c.int(type), c.int(protocol), c.uint(flags))
 
 	return sqe
@@ -41,6 +43,8 @@ ring_socket :: proc(ring: ^ring, domain: int, type: int, protocol: int, flags: u
 
 ring_connect :: proc(ring: ^ring, socket: i32, sockaddr: ^os.SOCKADDR) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
+
+	log.debugf("[ring fd: %v] prepping connect to %v", ring.underlying.ring_fd, sockaddr)
 
 	prep_connect(sqe, socket, sockaddr, size_of(os.SOCKADDR))
 
@@ -50,6 +54,8 @@ ring_connect :: proc(ring: ^ring, socket: i32, sockaddr: ^os.SOCKADDR) -> ^io_ur
 ring_write :: proc(ring: ^ring, fd: os.Handle, buf: []byte, offset: int) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
+	log.debugf("[ring fd: %v] prepping write to %v", ring.underlying.ring_fd, fd)
+
 	prep_write(sqe, i32(fd), raw_data(buf), u32(len(buf)), u64(offset))
 
 	return sqe
@@ -58,20 +64,32 @@ ring_write :: proc(ring: ^ring, fd: os.Handle, buf: []byte, offset: int) -> ^io_
 ring_read :: proc(ring: ^ring, fd: os.Handle, buf: []byte, offset: int) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
+	log.debugf("[ring fd: %v] prepping read from %v", ring.underlying.ring_fd, fd)
+
 	prep_read(sqe, i32(fd), raw_data(buf), u32(len(buf)), u64(offset))
 
 	return sqe
 }
 
-ring_timeout :: proc(ring: ^ring, timeout: time.Duration) -> ^io_uring_sqe {
+// ring_timeout :: proc(ring: ^ring, timeout: time.Duration) -> ^io_uring_sqe {
+// 	sqe := get_sqe(&ring.underlying)
+//
+// 	ts := kernel_timespec{
+// 		tv_sec = 0,
+// 		tv_nsec = i64(timeout),
+// 	}
+//
+// 	prep_timeout(sqe, &ts, 1, 0)
+//
+// 	return sqe
+// }
+
+ring_link_timeout :: proc(ring: ^ring, timeout: ^kernel_timespec) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
-	ts := kernel_timespec{
-		tv_sec = 0,
-		tv_nsec = i64(timeout),
-	}
+	log.debugf("[ring fd: %v] prepping link timeout with timeout=%v", ring.underlying.ring_fd, timeout)
 
-	prep_timeout(sqe, &ts, 1, 0)
+	prep_link_timeout(sqe, timeout, 0)
 
 	return sqe
 }
@@ -84,30 +102,30 @@ ring_poll_multishot :: proc(ring: ^ring, fd: os.Handle, mask: uint) -> ^io_uring
 	return sqe
 }
 
-ring_submit_and_wait_timeout :: proc(ring: ^ring, #any_int nr_wait: int, timeout: time.Duration, process_cqe_callback: proc(cqe: ^io_uring_cqe)) -> (err: Error) {
-	ts := kernel_timespec{
-		tv_sec = 0,
-		tv_nsec = i64(timeout),
-	}
-
-	res := submit_and_wait_timeout(&ring.underlying, c.uint(nr_wait), &ts, nil)
-	if res < 0 {
-		return os_err_from_errno(-res)
-	}
-
-	// TODO(vincent): make this dynamic ? attach to the ring itself ?
-	CQES :: 16
-	cqes: [CQES]^io_uring_cqe = {}
-
-	count := peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
-	for cqe in cqes[:count] {
-		process_cqe_callback(cqe)
-	}
-
-	cq_advance(&ring.underlying, u32(count))
-
-	return nil
-}
+// ring_submit_and_wait_timeout :: proc(ring: ^ring, #any_int nr_wait: int, timeout: time.Duration, process_cqe_callback: proc(cqe: ^io_uring_cqe)) -> (err: Error) {
+// 	ts := kernel_timespec{
+// 		tv_sec = 0,
+// 		tv_nsec = i64(timeout),
+// 	}
+//
+// 	res := submit_and_wait_timeout(&ring.underlying, c.uint(nr_wait), &ts, nil)
+// 	if res < 0 {
+// 		return os_err_from_errno(-res)
+// 	}
+//
+// 	// TODO(vincent): make this dynamic ? attach to the ring itself ?
+// 	CQES :: 16
+// 	cqes: [CQES]^io_uring_cqe = {}
+//
+// 	count := peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
+// 	for cqe in cqes[:count] {
+// 		process_cqe_callback(cqe)
+// 	}
+//
+// 	cq_advance(&ring.underlying, u32(count))
+//
+// 	return nil
+// }
 
 ring_submit_and_wait :: proc(ring: ^ring, #any_int nr_wait: int, process_cqe_callback: proc(cqe: ^io_uring_cqe)) -> (err: Error) {
 	res := submit_and_wait(&ring.underlying, c.uint(nr_wait))

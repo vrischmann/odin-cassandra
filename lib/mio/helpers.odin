@@ -15,6 +15,8 @@ Error :: enum {
 	Timer_Expired,
 	Canceled,
 	Connection_Refused,
+	Address_Family_Not_Supported,
+	Timed_Out,
 
 	Unexpected,
 }
@@ -35,6 +37,10 @@ os_err_from_errno :: proc(#any_int errno: os.Errno) -> Error {
 		return .Canceled
 	case os.ECONNREFUSED:
 		return .Connection_Refused
+	case os.EAFNOSUPPORT:
+		return .Address_Family_Not_Supported
+	case os.ETIMEDOUT:
+		return .Timed_Out
 	case:
 		log.warnf("unexpected errno %d", errno)
 
