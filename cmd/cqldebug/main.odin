@@ -88,6 +88,24 @@ repl_destroy :: proc(repl: ^REPL) {
 	delete(repl.connections)
 }
 
+repl_reap_closed_connections :: proc(repl: ^REPL) {
+	delete_queue := make([dynamic]int, allocator = context.temp_allocator)
+
+	for &conn, i in repl.connections {
+		if conn.state.closed {
+			log.infof("reaping connection %v", conn)
+
+			append(&delete_queue, i)
+			cql.destroy_connection(&conn)
+		}
+	}
+
+	for len(delete_queue) > 0 {
+		i := pop(&delete_queue)
+		unordered_remove(&repl.connections, i)
+	}
+}
+
 repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
 	save_line := false
 	line := strings.trim_space(line)
@@ -168,7 +186,7 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 			}
 
 		case 0:
-			fmt.eprintfln("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
+			log.warnf("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
 
 		case:
 
@@ -177,7 +195,7 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 			linenoise.linenoiseHide(&repl.ls)
 			defer linenoise.linenoiseShow(&repl.ls)
 
-			fmt.eprintfln("got cqe %v for conn %v", cqe, conn)
+			// log.debugf("got cqe %v for conn %v", cqe, conn)
 
 			cql.process_cqe(conn, cqe) or_return
 		}
@@ -204,13 +222,13 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			repl := (^REPL)(context.user_ptr)
 
-			{
-				linenoise.linenoiseHide(&repl.ls)
-				defer linenoise.linenoiseShow(&repl.ls)
-
-				elapsed := time.since(repl.last_submit_time)
-				fmt.printfln("elapsed: %s", elapsed)
-			}
+			// {
+			// 	linenoise.linenoiseHide(&repl.ls)
+			// 	defer linenoise.linenoiseShow(&repl.ls)
+			//
+			// 	elapsed := time.since(repl.last_submit_time)
+			// 	fmt.printfln("elapsed: %s", elapsed)
+			// }
 
 			if err := process_cqe(repl, cqe); err != nil {
 				linenoise.linenoiseHide(&repl.ls)
@@ -220,6 +238,10 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 			}
 		}) or_return
 		context.user_ptr = nil
+
+		// Reap closed connections
+
+		repl_reap_closed_connections(repl)
 	}
 
 	fmt.println("stopped")

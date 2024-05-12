@@ -192,6 +192,7 @@ foreign uring {
 	cq_advance :: proc(ring: ^io_uring, nr: c.uint) ---
 
 	prep_socket :: proc(sqe: ^io_uring_sqe, domain: c.int, type: c.int, protocol: c.int, flags: c.uint) ---
+	prep_close :: proc(sqe: ^io_uring_sqe, fd: c.int) ---
 	prep_connect :: proc(sqe: ^io_uring_sqe, sockfd: c.int, addr: ^os.SOCKADDR, addr_len: os.socklen_t) ---
 	prep_write :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---
 	prep_read :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---

@@ -41,12 +41,20 @@ ring_socket :: proc(ring: ^ring, domain: int, type: int, protocol: int, flags: u
 	return sqe
 }
 
-ring_connect :: proc(ring: ^ring, socket: i32, sockaddr: ^os.SOCKADDR) -> ^io_uring_sqe {
+ring_close :: proc(ring: ^ring, fd: os.Handle) -> ^io_uring_sqe {
+	sqe := get_sqe(&ring.underlying)
+
+	prep_close(sqe, i32(fd))
+
+	return sqe
+}
+
+ring_connect :: proc(ring: ^ring, socket: os.Socket, sockaddr: ^os.SOCKADDR) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
 	log.debugf("[ring fd: %v] prepping connect to %v", ring.underlying.ring_fd, sockaddr)
 
-	prep_connect(sqe, socket, sockaddr, size_of(os.SOCKADDR))
+	prep_connect(sqe, i32(socket), sockaddr, size_of(os.SOCKADDR))
 
 	return sqe
 }

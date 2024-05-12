@@ -30,6 +30,8 @@ Connection :: struct {
 	completion_count: int,
 
 	state: struct {
+		closed: bool,
+
 		socket: os.Socket,
 		sockaddr: os.SOCKADDR,
 
@@ -37,6 +39,7 @@ Connection :: struct {
 
 		op: enum {
 			Socket = 0,
+			Close,
 			Connect,
 			Write,
 			Read,
@@ -87,6 +90,8 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Err
 	#partial switch conn.state.op {
 	case .Socket:
 		return process_cqe_socket(conn, cqe)
+	case .Close:
+		return process_cqe_close(conn, cqe)
 	case .Connect:
 		return process_cqe_connect(conn, cqe)
 	case .Write:
@@ -141,7 +146,7 @@ process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 
 	log.infof("socket: %v, sockaddr: %v", conn.state.socket, conn.state.sockaddr)
 
-	sqe := mio.ring_connect(conn.ring, i32(conn.state.socket), &conn.state.sockaddr)
+	sqe := mio.ring_connect(conn.ring, conn.state.socket, &conn.state.sockaddr)
 	sqe.flags |= mio.IOSQE_IO_LINK
 	sqe.user_data = u64(uintptr(conn))
 
@@ -156,11 +161,43 @@ process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 }
 
 @(private)
+process_cqe_close :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.debugf("[OP: close]: %v", cqe)
+
+	if cqe.res == 0 {
+		log.infof("socket %v has been closed", conn.state.socket)
+		conn.state.closed = true
+	} else {
+		err := mio.os_err_from_errno(-cqe.res)
+		log.warnf("unable to close socket %v, err: %v", conn.state.socket, err)
+	}
+
+	return nil
+}
+
+@(private)
 process_cqe_connect :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
 	log.infof("[OP: connect]: %v", cqe)
 
 	if cqe.res != 0 {
-		return mio.os_err_from_errno(-cqe.res)
+		err := mio.os_err_from_errno(-cqe.res)
+		#partial switch err {
+		case .Timer_Expired:
+			log.debug("timeout triggered")
+			return nil
+		case .Canceled:
+			log.warnf("connection attempt timed out, closing socket")
+
+			conn.state.op = .Close
+
+			sqe := mio.ring_close(conn.ring, os.Handle(conn.state.socket))
+			sqe.user_data = u64(uintptr(conn))
+
+			return nil
+
+		case:
+			return err
+		}
 	}
 
 	conn.state.op = .Write
