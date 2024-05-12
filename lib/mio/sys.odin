@@ -3,7 +3,7 @@ package mio
 import "core:c"
 import "core:os"
 
-foreign import uring "system:uring-ffi.a"
+foreign import uring "system:uring-ffi"
 
 @(private)
 kernel_timespec :: struct {
@@ -163,10 +163,12 @@ foreign uring {
 	peek_batch_cqe :: proc(ring: ^io_uring, cqes: ^^io_uring_cqe, count: c.uint) -> c.int ---
 	cq_advance :: proc(ring: ^io_uring, nr: c.uint) ---
 
+	prep_socket :: proc(sqe: ^io_uring_sqe, domain: c.int, type: c.int, protocol: c.int, flags: c.uint) ---
 	prep_connect :: proc(sqe: ^io_uring_sqe, sockfd: c.int, addr: ^os.SOCKADDR, addr_len: os.socklen_t) ---
 	prep_write :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---
 	prep_read :: proc(sqe: ^io_uring_sqe, fd: c.int, buf: rawptr, nbytes: c.uint, offset: u64) ---
 	prep_timeout :: proc(sqe: ^io_uring_sqe, ts: ^kernel_timespec, count: c.uint, flags: c.uint) ---
+	prep_poll_multishot :: proc(sqe: ^io_uring_sqe, fd: c.int, poll_mask: c.uint) ---
 
 	// setup :: proc(entries: c.uint32_t, p: ^params) -> c.int ---
 }

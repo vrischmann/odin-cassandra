@@ -45,13 +45,3 @@ os_err_from_errno :: proc(#any_int errno: os.Errno) -> OS_Error {
 		return .Unexpected
 	}
 }
-
-create_socket :: proc() -> (os.Socket, OS_Error) {
-	tmp, errno := os.socket(os.AF_INET, os.SOCK_STREAM, 0)
-	if errno < 0 {
-		log.errorf("unable to create socket, err: %v", libc.strerror(libc.int(errno)))
-		return 0, os_err_from_errno(-errno)
-	}
-
-	return tmp, nil
-}

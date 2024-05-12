@@ -7,6 +7,7 @@ import "core:mem"
 import "core:net"
 import "core:os"
 import "core:sys/linux"
+import "core:sys/unix"
 
 import "cassandra:cql"
 import "cassandra:linenoise"
@@ -68,44 +69,54 @@ run_repl :: proc(repl: ^REPL) -> (err: Error) {
 
 	// Submit SQEs, process CQEs
 	tick :: proc(repl: ^REPL, nr_wait: int) -> Error {
-		err := mio.ring_submit_and_wait_timeout(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
+		err := mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
 
 			if err := cql.process_cqe(conn, cqe); err != nil {
 				log.errorf("unable to process cqe")
 			}
 		})
-		if err != nil {
-			return err
+		switch e in err {
+		case mio.OS_Error:
+			return e
 		}
 
 		return nil
 	}
 
+	// Initialize linenoise
+
+	ls: linenoise.linenoiseState = {}
+	buf: [1024]byte = {}
+
+	linenoise.linenoiseEditStart(&ls, -1, -1, raw_data(buf[:]), len(buf), "cqldebug> ")
+
 	//
 
-	pending_cqes := 1
+	issue_stdin_poll := true
 
-	loop: for {
-		line := linenoise.linenoise("hello> ")
-		if line == nil {
-			break loop
+	for {
+		// Issue a multishot poll on stdin if necessary
+
+		if issue_stdin_poll {
+			STDIN :: 1
+
+			sqe := mio.ring_poll_multishot(repl.ring, STDIN, unix.POLLIN)
 		}
-		defer linenoise.linenoiseFree(transmute(rawptr) line)
-
-		fmt.printf("you wrote: %s\n", line)
-
-		switch line {
-		case "connect":
-			endpoint_str := string(line)
-
-			if err := do_connect(repl, endpoint_str); err != nil {
-				fmt.printf("unable to connect, err: %v\n", err)
-			}
-		}
-
-		tick(repl, pending_cqes) or_return
 	}
+
+	// for {
+	// 	switch line {
+	// 	case "connect":
+	// 		endpoint_str := string(line)
+	//
+	// 		if err := do_connect(repl, endpoint_str); err != nil {
+	// 			fmt.printf("unable to connect, err: %v\n", err)
+	// 		}
+	// 	}
+	//
+	// 	tick(repl, pending_cqes) or_return
+	// }
 
 	fmt.println("stopped")
 

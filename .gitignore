@@ -1,4 +1,5 @@
 # Build and test binaries
+*.o
 *.bin
 /cqldebug
 /cql
