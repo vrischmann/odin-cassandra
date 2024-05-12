@@ -222,14 +222,6 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			repl := (^REPL)(context.user_ptr)
 
-			// {
-			// 	linenoise.linenoiseHide(&repl.ls)
-			// 	defer linenoise.linenoiseShow(&repl.ls)
-			//
-			// 	elapsed := time.since(repl.last_submit_time)
-			// 	fmt.printfln("elapsed: %s", elapsed)
-			// }
-
 			if err := process_cqe(repl, cqe); err != nil {
 				linenoise.linenoiseHide(&repl.ls)
 				defer linenoise.linenoiseShow(&repl.ls)
@@ -239,7 +231,14 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		}) or_return
 		context.user_ptr = nil
 
-		// Reap closed connections
+		// Reap closed connections.
+		//
+		// Connections can be closed for a number of reasons; the remote endpoint is not available or closed its connection,
+		// network is unreachable, etc.
+		//
+		// When that happens the connection closes its socket and marks itself as closed which renders it unusable.
+		//
+		// TODO(vincent): maybe we could reuse the connection instead: rearm it to start from scratch
 
 		repl_reap_closed_connections(repl)
 	}

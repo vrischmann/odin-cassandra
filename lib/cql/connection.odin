@@ -150,7 +150,7 @@ process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 	sqe.flags |= mio.IOSQE_IO_LINK
 	sqe.user_data = u64(uintptr(conn))
 
-	conn.state.current_timeout.tv_sec = 0
+	conn.state.current_timeout = {}
 	conn.state.current_timeout.tv_nsec = i64(1 * time.Second)
 
 	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.state.current_timeout)
