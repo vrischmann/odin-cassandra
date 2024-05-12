@@ -199,6 +199,8 @@ foreign uring {
 	prep_timeout :: proc(sqe: ^io_uring_sqe, ts: ^kernel_timespec, count: c.uint, flags: c.uint) ---
 	prep_link_timeout :: proc(sqe: ^io_uring_sqe, ts: ^kernel_timespec, flags: c.uint) ---
 	prep_poll_multishot :: proc(sqe: ^io_uring_sqe, fd: c.int, poll_mask: c.uint) ---
+	prep_cancel_fd :: proc(sqe: ^io_uring_sqe, fd: c.int, flags: c.int) ---
+	prep_shutdown :: proc(sqe: ^io_uring_sqe, sockfd: c.int, how: c.int) ---
 
 	// setup :: proc(entries: c.uint32_t, p: ^params) -> c.int ---
 }

@@ -19,6 +19,16 @@ Connection_Error :: union #shared_nil {
 	Process_Error,
 }
 
+Connection_Stage :: enum {
+	Invalid = 0,
+	Create_Socket,
+	Connect_To_Endpoint,
+	Write_Frame,
+	Read,
+
+	Graceful_Shutdown,
+}
+
 Connection :: struct {
 	// These fields are provided by the caller either in [init_connection] or [connect_endpoint]
 	id: Connection_Id,
@@ -27,37 +37,32 @@ Connection :: struct {
 
 	// These fields are created and managed by the connection itself
 
-	completion_count: int,
+	// Set to true when the connection has closed its socket
+	// TODO(vincent): maybe don't do this ?
+	closed: bool,
 
-	state: struct {
-		closed: bool,
+	// Low level stuff used to drive io_uring
+	socket: os.Socket,
+	sockaddr: os.SOCKADDR,
+	timeout: mio.kernel_timespec,
+	stage: Connection_Stage,
 
-		socket: os.Socket,
-		sockaddr: os.SOCKADDR,
+	buf: [dynamic]u8,
 
-		current_timeout: mio.kernel_timespec,
-
-		op: enum {
-			Socket = 0,
-			Close,
-			Connect,
-			Write,
-			Read,
-			Timeout,
-		},
-
-		buf: [dynamic]u8,
-	},
+	// TODO(vincent): handle multiple streams
+	stream: u16,
 }
 
-init_connection :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id) -> (err: Connection_Error) {
+connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id) -> (err: Connection_Error) {
 	conn.id = id
-	conn.completion_count = 0
 	conn.ring = ring
-	conn.state = {}
+	conn.stage = .Create_Socket
+	conn.buf = {}
+	// TODO(vincent): handle multiple streams
+	conn.stream = 10000
 
-	reserve(&conn.state.buf, 4096) or_return
-	resize(&conn.state.buf, 0) or_return
+	reserve(&conn.buf, 4096) or_return
+	resize(&conn.buf, 0) or_return
 
 	return nil
 }
@@ -80,40 +85,57 @@ connect_endpoint :: proc(conn: ^Connection, endpoint: net.Endpoint) -> (err: Con
 	return nil
 }
 
-destroy_connection :: proc(conn: ^Connection) {
-	delete(conn.state.buf)
+connection_destroy :: proc(conn: ^Connection) {
+	delete(conn.buf)
+}
+
+connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Connection_Error) {
+	log.info("prepping graceful shutdown")
+
+	conn.stage = .Graceful_Shutdown
+
+	cancel_sqe := mio.ring_cancel_fd(conn.ring, os.Handle(conn.socket))
+	cancel_sqe.user_data = 100
+	cancel_sqe.flags |= mio.IOSQE_IO_HARDLINK
+
+	shutdown_sqe := mio.ring_shutdown(conn.ring, conn.socket)
+	shutdown_sqe.user_data = 100
+	shutdown_sqe.flags |= mio.IOSQE_IO_HARDLINK
+
+	close_sqe := mio.ring_close(conn.ring, os.Handle(conn.socket))
+	close_sqe.user_data = u64(uintptr(conn))
+
+	return nil
 }
 
 process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	conn.completion_count += 1
-
-	#partial switch conn.state.op {
-	case .Socket:
-		return process_cqe_socket(conn, cqe)
-	case .Close:
-		return process_cqe_close(conn, cqe)
-	case .Connect:
-		return process_cqe_connect(conn, cqe)
-	case .Write:
-		return process_cqe_write(conn, cqe)
-	// case .Read:
-	// 	return process_cqe_read(conn, cqe)
-	// case .Timeout:
-	// 	return process_cqe_timeout(conn, cqe)
+	switch conn.stage {
+	case .Create_Socket:
+		return handle_create_socket(conn, cqe)
+	case .Connect_To_Endpoint:
+		return handle_connect_to_endpoint(conn, cqe)
+	case .Write_Frame:
+		return handle_write_frame(conn, cqe)
+	case .Read:
+		return handle_read(conn, cqe)
+	case .Graceful_Shutdown:
+		return handle_graceful_shutdown(conn, cqe)
+	case .Invalid:
+		return .Invalid_Stage
 	case:
-		return .Invalid_Op
+		return .Invalid_Stage
 	}
 }
 
 @(private)
 Process_Error :: enum {
 	None = 0,
-	Invalid_Op,
+	Invalid_Stage,
 }
 
 @(private)
-process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	log.infof("[OP: socket]: %v", cqe)
+handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
@@ -122,20 +144,20 @@ process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 
 	// We got a socket, connect to it
 
-	conn.state.socket = os.Socket(cqe.res)
-	conn.state.op = .Connect
+	conn.socket = os.Socket(cqe.res)
+	conn.stage = .Connect_To_Endpoint
 
 	// Prepare the SOCKADDR
 	switch a in conn.endpoint.address {
 	case net.IP4_Address:
-		(^os.sockaddr_in)(&conn.state.sockaddr)^ = os.sockaddr_in {
+		(^os.sockaddr_in)(&conn.sockaddr)^ = os.sockaddr_in {
 			sin_family = u16(os.AF_INET),
 			sin_port = u16be(conn.endpoint.port),
 			sin_addr = transmute(os.in_addr) a,
 			sin_zero = {},
 		}
 	case net.IP6_Address:
-		(^os.sockaddr_in6)(&conn.state.sockaddr)^ = os.sockaddr_in6 {
+		(^os.sockaddr_in6)(&conn.sockaddr)^ = os.sockaddr_in6 {
 			sin6_family = u16(os.AF_INET6),
 			sin6_port = u16be(conn.endpoint.port),
 			sin6_flowinfo = 0,
@@ -144,77 +166,58 @@ process_cqe_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 		}
 	}
 
-	log.infof("socket: %v, sockaddr: %v", conn.state.socket, conn.state.sockaddr)
+	log.infof("socket: %v, sockaddr: %v", conn.socket, conn.sockaddr)
 
-	sqe := mio.ring_connect(conn.ring, conn.state.socket, &conn.state.sockaddr)
+	sqe := mio.ring_connect(conn.ring, conn.socket, &conn.sockaddr)
 	sqe.flags |= mio.IOSQE_IO_LINK
 	sqe.user_data = u64(uintptr(conn))
 
-	conn.state.current_timeout = {}
-	conn.state.current_timeout.tv_nsec = i64(1 * time.Second)
+	conn.timeout = {}
+	conn.timeout.tv_nsec = i64(1 * time.Second)
 
-	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.state.current_timeout)
-	timeout_sqe.user_data = u64(uintptr(conn))
+	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
+	timeout_sqe.user_data = 20
 
-
-	return nil
-}
-
-@(private)
-process_cqe_close :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	log.debugf("[OP: close]: %v", cqe)
-
-	if cqe.res == 0 {
-		log.infof("socket %v has been closed", conn.state.socket)
-		conn.state.closed = true
-	} else {
-		err := mio.os_err_from_errno(-cqe.res)
-		log.warnf("unable to close socket %v, err: %v", conn.state.socket, err)
-	}
 
 	return nil
 }
 
 @(private)
-process_cqe_connect :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	log.infof("[OP: connect]: %v", cqe)
+handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.infof("%v", cqe)
 
 	if cqe.res != 0 {
-		err := mio.os_err_from_errno(-cqe.res)
-		#partial switch err {
-		case .Timer_Expired:
-			log.debug("timeout triggered")
-			return nil
-		case .Canceled:
-			log.warnf("connection attempt timed out, closing socket")
-
-			conn.state.op = .Close
-
-			sqe := mio.ring_close(conn.ring, os.Handle(conn.state.socket))
-			sqe.user_data = u64(uintptr(conn))
-
-			return nil
-
-		case:
-			return err
-		}
+		return mio.os_err_from_errno(-cqe.res)
 	}
 
-	conn.state.op = .Write
+	// Connection is established, now start the handshake with the server
+	//
+	// First step is a OPTIONS envelope _unframed_
 
-	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.state.socket, len(conn.state.buf), conn.state.buf)
+	conn.stage = .Write_Frame
 
-	sqe := mio.ring_write(conn.ring, os.Handle(conn.state.socket), conn.state.buf[:], 0)
-	sqe.user_data = u64(uintptr(conn))
+	options_hdr: EnvelopeHeader = {}
+	options_hdr.version = .V4
+	options_hdr.flags = 0
+	options_hdr.stream = conn.stream
+	options_hdr.opcode = .OPTIONS
+	options_hdr.length = 0
 
-	log.infof("prepped write")
+	clear(&conn.buf)
+	envelope_append(&conn.buf, options_hdr, nil)
+
+
+	// log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
+	//
+	// sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
+	// sqe.user_data = u64(uintptr(conn))
 
 	return nil
 }
 
 @(private)
-process_cqe_write :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	log.infof("[OP: write]: %v", cqe)
+handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
@@ -224,64 +227,57 @@ process_cqe_write :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connecti
 	{
 		n := int(cqe.res)
 		switch {
-		case n < len(conn.state.buf):
+		case n < len(conn.buf):
 			return .Short_Write
-		case n > len(conn.state.buf):
+		case n > len(conn.buf):
 			return .Invalid_Write
 		}
 	}
 
 	//
 
-	conn.state.op = .Read
+	conn.stage = .Read
 
-	clear(&conn.state.buf)
-	resize(&conn.state.buf, cap(conn.state.buf))
+	clear(&conn.buf)
+	resize(&conn.buf, cap(conn.buf))
 
-	log.infof("prep reading from socket fd=%d into buffer len=%v", conn.state.socket, len(conn.state.buf))
+	log.infof("prep reading from socket fd=%d into buffer len=%v", conn.socket, len(conn.buf))
 
-	sqe := mio.ring_read(conn.ring, os.Handle(conn.state.socket), conn.state.buf[:], 0)
+	sqe := mio.ring_read(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
 	sqe.user_data = u64(uintptr(conn))
 
 	return nil
 }
 
-// @(private)
-// process_cqe_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-// 	log.infof("[OP: read]: %+v", cqe)
-//
-// 	if cqe.res < 0 {
-// 		return mio.os_err_from_errno(-cqe.res)
-// 	}
-//
-// 	// Sanity checks
-// 	n := int(cqe.res)
-// 	if n > len(conn.state.buf) {
-// 		return .Short_Buffer
-// 	}
-//
-// 	// Do stuff with the data
-//
-// 	read_data := conn.state.buf[0:n]
-// 	log.infof("read data: %q", string(read_data))
-//
-// 	clear(&conn.state.buf)
-//
-// 	// Arm a timeout for the next write+read
-//
-// 	conn.state.op = .Timeout
-//
-// 	log.infof("prep timeout")
-//
-// 	sqe := mio.ring_timeout(conn.ring, 2 * time.Second)
-// 	sqe.user_data = u64(uintptr(conn))
-//
-// 	return nil
-// }
+@(private)
+handle_read :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.infof("%v", cqe)
+
+	if cqe.res < 0 {
+		return mio.os_err_from_errno(-cqe.res)
+	}
+
+	// Sanity checks
+	n := int(cqe.res)
+	if n > len(conn.buf) {
+		return .Short_Buffer
+	}
+
+	// Do stuff with the data
+
+	read_data := conn.buf[0:n]
+	log.infof("read data: %q", string(read_data))
+
+	clear(&conn.buf)
+
+	// TODO(vincent): write me
+
+	return nil
+}
 //
 // @(private)
 // process_cqe_timeout :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-// 	log.infof("[OP: timeout]: %+v", cqe)
+// 	log.infof("[STAGE: timeout]: %+v", cqe)
 //
 // 	if cqe.res < 0 {
 // 		err := mio.os_err_from_errno(-cqe.res)
@@ -290,18 +286,34 @@ process_cqe_write :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connecti
 // 		}
 // 	}
 //
-// 	conn.state.op = .Write
+// 	conn.op = .Write
 //
-// 	resize(&conn.state.buf, cap(conn.state.buf))
+// 	resize(&conn.buf, cap(conn.buf))
 //
-// 	data := fmt.bprintf(conn.state.buf[:], "writing, completion count: %d", conn.completion_count)
+// 	data := fmt.bprintf(conn.buf[:], "writing, completion count: %d", conn.completion_count)
 //
-// 	resize(&conn.state.buf, len(data))
+// 	resize(&conn.buf, len(data))
 //
-// 	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.state.socket, len(data), data)
+// 	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(data), data)
 //
-// 	sqe := mio.ring_write(conn.ring, os.Handle(conn.state.socket), conn.state.buf[:], 0)
+// 	sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
 // 	sqe.user_data = u64(uintptr(conn))
 //
 // 	return nil
 // }
+
+@(private)
+handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
+	log.infof("%v", cqe)
+
+	if cqe.res == 0 {
+		log.infof("socket %v has been closed", conn.socket)
+		conn.closed = true
+	} else {
+		err := mio.os_err_from_errno(-cqe.res)
+		log.warnf("unable to close socket %v, err: %v", conn.socket, err)
+	}
+
+	return nil
+}
+

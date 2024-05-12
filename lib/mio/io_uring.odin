@@ -44,7 +44,7 @@ ring_socket :: proc(ring: ^ring, domain: int, type: int, protocol: int, flags: u
 ring_close :: proc(ring: ^ring, fd: os.Handle) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
-	prep_close(sqe, i32(fd))
+	prep_close(sqe, c.int(fd))
 
 	return sqe
 }
@@ -54,7 +54,7 @@ ring_connect :: proc(ring: ^ring, socket: os.Socket, sockaddr: ^os.SOCKADDR) -> 
 
 	log.debugf("[ring fd: %v] prepping connect to %v", ring.underlying.ring_fd, sockaddr)
 
-	prep_connect(sqe, i32(socket), sockaddr, size_of(os.SOCKADDR))
+	prep_connect(sqe, c.int(socket), sockaddr, size_of(os.SOCKADDR))
 
 	return sqe
 }
@@ -64,7 +64,7 @@ ring_write :: proc(ring: ^ring, fd: os.Handle, buf: []byte, offset: int) -> ^io_
 
 	log.debugf("[ring fd: %v] prepping write to %v", ring.underlying.ring_fd, fd)
 
-	prep_write(sqe, i32(fd), raw_data(buf), u32(len(buf)), u64(offset))
+	prep_write(sqe, c.int(fd), raw_data(buf), u32(len(buf)), u64(offset))
 
 	return sqe
 }
@@ -74,7 +74,7 @@ ring_read :: proc(ring: ^ring, fd: os.Handle, buf: []byte, offset: int) -> ^io_u
 
 	log.debugf("[ring fd: %v] prepping read from %v", ring.underlying.ring_fd, fd)
 
-	prep_read(sqe, i32(fd), raw_data(buf), u32(len(buf)), u64(offset))
+	prep_read(sqe, c.int(fd), raw_data(buf), u32(len(buf)), u64(offset))
 
 	return sqe
 }
@@ -105,7 +105,7 @@ ring_link_timeout :: proc(ring: ^ring, timeout: ^kernel_timespec) -> ^io_uring_s
 ring_poll_multishot :: proc(ring: ^ring, fd: os.Handle, mask: uint) -> ^io_uring_sqe {
 	sqe := get_sqe(&ring.underlying)
 
-	prep_poll_multishot(sqe, i32(fd), c.uint(mask))
+	prep_poll_multishot(sqe, c.int(fd), c.uint(mask))
 
 	return sqe
 }
@@ -134,6 +134,22 @@ ring_poll_multishot :: proc(ring: ^ring, fd: os.Handle, mask: uint) -> ^io_uring
 //
 // 	return nil
 // }
+
+ring_cancel_fd :: proc(ring: ^ring, fd: os.Handle) -> ^io_uring_sqe {
+	sqe := get_sqe(&ring.underlying)
+
+	prep_cancel_fd(sqe, c.int(fd), 0)
+
+	return sqe
+}
+
+ring_shutdown :: proc(ring: ^ring, fd: os.Socket) -> ^io_uring_sqe {
+	sqe := get_sqe(&ring.underlying)
+
+	prep_shutdown(sqe, c.int(fd), c.int(os.SHUT_WR))
+
+	return sqe
+}
 
 ring_submit_and_wait :: proc(ring: ^ring, #any_int nr_wait: int, process_cqe_callback: proc(cqe: ^io_uring_cqe)) -> (err: Error) {
 	res := submit_and_wait(&ring.underlying, c.uint(nr_wait))

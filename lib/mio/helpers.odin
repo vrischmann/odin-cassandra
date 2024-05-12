@@ -21,7 +21,7 @@ Error :: enum {
 	Unexpected,
 }
 
-os_err_from_errno :: proc(#any_int errno: os.Errno) -> Error {
+os_err_from_errno :: proc(#any_int errno: os.Errno, location := #caller_location) -> Error {
 	switch errno {
 	case os.EACCES:
 		return .Access_Denied
@@ -42,7 +42,7 @@ os_err_from_errno :: proc(#any_int errno: os.Errno) -> Error {
 	case os.ETIMEDOUT:
 		return .Timed_Out
 	case:
-		log.warnf("unexpected errno %d", errno)
+		log.warnf("unexpected errno %d", errno, location = location)
 
 		return .Unexpected
 	}

@@ -83,7 +83,7 @@ repl_linenoise_reset :: proc(repl: ^REPL) {
 
 repl_destroy :: proc(repl: ^REPL) {
 	for &conn in repl.connections {
-		cql.destroy_connection(&conn)
+		cql.connection_destroy(&conn)
 	}
 	delete(repl.connections)
 }
@@ -92,11 +92,11 @@ repl_reap_closed_connections :: proc(repl: ^REPL) {
 	delete_queue := make([dynamic]int, allocator = context.temp_allocator)
 
 	for &conn, i in repl.connections {
-		if conn.state.closed {
+		if conn.closed {
 			log.infof("reaping connection %v", conn)
 
 			append(&delete_queue, i)
-			cql.destroy_connection(&conn)
+			cql.connection_destroy(&conn)
 		}
 	}
 
@@ -117,6 +117,7 @@ repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
 		//
 		// Command: connect <hostname>
 		//
+		// Parse the endpoint to validate it
 
 		endpoint_str := strings.trim_space(line[len("connect"):])
 		if len(endpoint_str) <= 0 {
@@ -132,11 +133,11 @@ repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
 
 		save_line = true
 
-		//
+		// Create and open the connection
 
 		conn: cql.Connection = {}
 		conn_id := cql.Connection_Id(len(repl.connections))
-		cql.init_connection(&conn, repl.ring, conn_id) or_return
+		cql.connection_init(&conn, repl.ring, conn_id) or_return
 
 		append(&repl.connections, conn) or_return
 		conn_idx := len(repl.connections) - 1
@@ -156,53 +157,69 @@ repl_process_line :: proc(repl: ^REPL, line: string) -> (err: Error) {
 }
 
 
-repl_run :: proc(repl: ^REPL) -> (err: Error) {
-	process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
-		switch cqe.user_data {
-		case 1:
-			// stdin is ready
-			line := linenoise.linenoiseEditFeed(&repl.ls)
-			if line == linenoise.linenoiseEditMore {
-				return
-			}
-
-			// either we got a line or the user has exited; reset the state
-			linenoise.linenoiseEditStop(&repl.ls)
-
-			if line == nil {
-				repl.running = false
-				return
-			}
-
-			defer linenoise.linenoiseFree(transmute(rawptr) line)
-
-			repl_process_line(repl, string(line)) or_return
-			repl_linenoise_reset(repl)
-
-			if cqe.flags & mio.IORING_CQE_F_MORE == 0 {
-				log.debug("not more")
-			} else {
-				log.debug("has more")
-			}
-
-		case 0:
-			log.warnf("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
-
-		case:
-
-			conn := (^cql.Connection)(uintptr(cqe.user_data))
-
-			linenoise.linenoiseHide(&repl.ls)
-			defer linenoise.linenoiseShow(&repl.ls)
-
-			// log.debugf("got cqe %v for conn %v", cqe, conn)
-
-			cql.process_cqe(conn, cqe) or_return
+repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
+	switch cqe.user_data {
+	case 1:
+		// stdin is ready
+		line := linenoise.linenoiseEditFeed(&repl.ls)
+		if line == linenoise.linenoiseEditMore {
+			return
 		}
 
-		return nil
+		// either we got a line or the user has exited; reset the state
+		linenoise.linenoiseEditStop(&repl.ls)
+
+		if line == nil {
+			repl.running = false
+			return
+		}
+
+		defer linenoise.linenoiseFree(transmute(rawptr) line)
+
+		repl_process_line(repl, string(line)) or_return
+		repl_linenoise_reset(repl)
+
+		if cqe.flags & mio.IORING_CQE_F_MORE == 0 {
+			log.debug("not more")
+		} else {
+			log.debug("has more")
+		}
+
+	case 100, 20:
+		// Expected; on some SQE we don't use the connection pointer because it's not absolutely necessary
+		//
+		// We could simply use 0 and don't log anything but while working on this code I want to be able to see when I let 0 by mistake
+
+	case 0:
+		log.warnf("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
+
+	case:
+		conn := (^cql.Connection)(uintptr(cqe.user_data))
+
+		linenoise.linenoiseHide(&repl.ls)
+		defer linenoise.linenoiseShow(&repl.ls)
+
+		// log.debugf("got cqe %v for conn %v", cqe, conn)
+
+		err := cql.process_cqe(conn, cqe)
+		#partial switch e in err {
+		case mio.Error:
+			#partial switch e {
+			case .Canceled:
+				fmt.eprintfln("\x1b[1m\x1b[31munable to connect to endpoint %v\x1b[0m\x1b[22m",
+					net.endpoint_to_string(conn.endpoint),
+				)
+
+				cql.connection_graceful_shutdown(conn) or_return
+			}
+		}
 	}
 
+	return nil
+}
+
+
+repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	issue_stdin_poll := true
 	for repl.running {
 		// Issue a multishot poll on stdin if necessary
@@ -222,7 +239,8 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
 			repl := (^REPL)(context.user_ptr)
 
-			if err := process_cqe(repl, cqe); err != nil {
+			err := repl_process_cqe(repl, cqe)
+			if err != nil {
 				linenoise.linenoiseHide(&repl.ls)
 				defer linenoise.linenoiseShow(&repl.ls)
 

@@ -112,19 +112,24 @@ Envelope_Direction :: enum {
 	Response,
 }
 
-envelope_append :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte, direction: Envelope_Direction = .Request) -> (err: Error) {
-	// Write the header
-	//
-	// Note that we reuse some functions for building the envelope body because they work exactly the same here
-
+envelope_append_header_version :: proc(buf: ^[dynamic]byte, version: ProtocolVersion, direction: Envelope_Direction) -> (err: Error) {
 	switch direction {
 	case .Request:
-		append(buf, byte(hdr.version)) or_return
+		append(buf, byte(version)) or_return
 	case .Response:
-		append(buf, byte(hdr.version) | 0x80) or_return
+		append(buf, byte(version) | 0x80) or_return
 	}
+
+	return nil
+}
+
+envelope_append_body :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte, direction: Envelope_Direction = .Request) -> (err: Error) {
+	// Write the header
+
+	// Note that we reuse some functions for building the envelope body because they work exactly the same here
+	envelope_append_header_version(buf, hdr.version, direction) or_return
 	append(buf, byte(hdr.flags)) or_return
-	envelope_body_append_short(buf, hdr.stream)
+	envelope_body_append_short(buf, hdr.stream) or_return
 	append(buf, byte(hdr.opcode)) or_return
 	envelope_body_append_int(buf, i32(len(body))) or_return
 
@@ -132,6 +137,24 @@ envelope_append :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/
 	append(buf, ..body) or_return
 
 	return nil
+}
+
+envelope_append_empty_body :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, direction: Envelope_Direction = .Request) -> (err: Error) {
+	// Write the header
+
+	// Note that we reuse some functions for building the envelope body because they work exactly the same here
+	envelope_append_header_version(buf, hdr.version, direction) or_return
+	append(buf, byte(hdr.flags)) or_return
+	envelope_body_append_short(buf, hdr.stream) or_return
+	append(buf, byte(hdr.opcode)) or_return
+	envelope_body_append_int(buf, 0) or_return
+
+	return nil
+}
+
+envelope_append :: proc{
+	envelope_append_body,
+	envelope_append_empty_body,
 }
 
 //
