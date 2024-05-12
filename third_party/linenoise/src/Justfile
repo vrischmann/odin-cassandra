@@ -1,0 +1,3 @@
+build:
+	cc -c linenoise.c
+	ar rcs linenoise.a linenoise.o

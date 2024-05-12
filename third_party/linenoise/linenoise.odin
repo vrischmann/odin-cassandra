@@ -6,7 +6,7 @@ import "core:c"
 //
 // We need a way to provide the data read from stdin via a buffer since io_uring is completion based, not readiness based.
 
-foreign import linenoise "system:linenoise"
+foreign import linenoise "src/linenoise.a"
 
 linenoiseEditMore: cstring = "If you see this, you are misusing the API: when linenoiseEditFeed() is called, if it returns linenoiseEditMore the user is yet editing the line. See the README file for more information."
 
