@@ -201,17 +201,38 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 
 		// log.debugf("got cqe %v for conn %v", cqe, conn)
 
-		err := cql.process_cqe(conn, cqe)
+		// TODO(vincent): this is ugly as hell but seems like the more straightforward way to handle errors
+
+		result, err := cql.process_cqe(conn, cqe)
 		#partial switch e in err {
 		case mio.Error:
 			#partial switch e {
-			case .Canceled:
-				fmt.eprintfln("\x1b[1m\x1b[31munable to connect to endpoint %v\x1b[0m\x1b[22m",
-					net.endpoint_to_string(conn.endpoint),
-				)
+			case .Canceled, .Connection_Refused:
+				#partial switch conn.stage {
+				case .Connect_To_Endpoint:
+					fmt.eprintfln("\x1b[1m\x1b[31munable to connect to endpoint %v: %v\x1b[0m\x1b[22m",
+						net.endpoint_to_string(conn.endpoint),
+						err,
+					)
+				}
 
 				cql.connection_graceful_shutdown(conn) or_return
+
+			case:
+				return err
 			}
+
+		case nil:
+			#partial switch result {
+			case .Connection_Established:
+				fmt.printfln("\x1b[1m\x1b[32mconnection to %v established in %v\x1b[0m\x1b[22m",
+					net.endpoint_to_string(conn.endpoint),
+					time.since(conn.connection_attempt_start),
+				)
+			}
+
+		case:
+			return err
 		}
 	}
 
@@ -244,7 +265,7 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 				linenoise.linenoiseHide(&repl.ls)
 				defer linenoise.linenoiseShow(&repl.ls)
 
-				fmt.eprintfln("unable to process CQE, err: %v", err)
+				fmt.eprintfln("\x1b[1m\x1b[31munable to process CQE, err: %v\x1b[0m\x1b[22m", err)
 			}
 		}) or_return
 		context.user_ptr = nil

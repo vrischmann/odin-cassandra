@@ -24,7 +24,7 @@ Connection_Stage :: enum {
 	Create_Socket,
 	Connect_To_Endpoint,
 	Write_Frame,
-	Read,
+	Read_Frame,
 
 	Graceful_Shutdown,
 }
@@ -36,6 +36,8 @@ Connection :: struct {
 	endpoint: net.Endpoint,
 
 	// These fields are created and managed by the connection itself
+
+	connection_attempt_start: time.Time,
 
 	// Set to true when the connection has closed its socket
 	// TODO(vincent): maybe don't do this ?
@@ -108,22 +110,34 @@ connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Connection_Erro
 	return nil
 }
 
-process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connection_Error {
-	switch conn.stage {
+Processing_Result :: enum {
+	Invalid = 0,
+	Socket_Created,
+	Connection_Established,
+	Frame_Written,
+	Frame_Read,
+	Shutdown,
+}
+
+process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processing_Result, err: Connection_Error) {
+	#partial switch conn.stage {
 	case .Create_Socket:
-		return handle_create_socket(conn, cqe)
+		handle_create_socket(conn, cqe) or_return
+		return .Socket_Created, nil
 	case .Connect_To_Endpoint:
-		return handle_connect_to_endpoint(conn, cqe)
+		handle_connect_to_endpoint(conn, cqe) or_return
+		return .Connection_Established, nil
 	case .Write_Frame:
-		return handle_write_frame(conn, cqe)
-	case .Read:
-		return handle_read(conn, cqe)
+		handle_write_frame(conn, cqe) or_return
+		return .Frame_Written, nil
+	case .Read_Frame:
+		handle_read(conn, cqe) or_return
+		return .Frame_Read, nil
 	case .Graceful_Shutdown:
-		return handle_graceful_shutdown(conn, cqe)
-	case .Invalid:
-		return .Invalid_Stage
+		handle_graceful_shutdown(conn, cqe) or_return
+		return .Shutdown, nil
 	case:
-		return .Invalid_Stage
+		return .Invalid, .Invalid_Stage
 	}
 }
 
@@ -168,6 +182,8 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Conne
 
 	log.infof("socket: %v, sockaddr: %v", conn.socket, conn.sockaddr)
 
+	conn.connection_attempt_start = time.now()
+
 	sqe := mio.ring_connect(conn.ring, conn.socket, &conn.sockaddr)
 	sqe.flags |= mio.IOSQE_IO_LINK
 	sqe.user_data = u64(uintptr(conn))
@@ -206,11 +222,10 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 	clear(&conn.buf)
 	envelope_append(&conn.buf, options_hdr, nil)
 
+	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
 
-	// log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
-	//
-	// sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
-	// sqe.user_data = u64(uintptr(conn))
+	sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
+	sqe.user_data = u64(uintptr(conn))
 
 	return nil
 }
@@ -234,9 +249,9 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Connect
 		}
 	}
 
-	//
+	// TODO(vincent): write this
 
-	conn.stage = .Read
+	conn.stage = .Read_Frame
 
 	clear(&conn.buf)
 	resize(&conn.buf, cap(conn.buf))
