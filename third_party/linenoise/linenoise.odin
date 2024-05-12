@@ -1,6 +1,8 @@
 package linenoise
 
 import "core:c"
+import "core:fmt"
+import "base:runtime"
 
 // TODO(vincent): fork/port linenoise to work natively with io_uring ?
 //
@@ -27,12 +29,28 @@ linenoiseState :: struct {
 	history_index: c.int,
 }
 
+RED :: 31
+GREEN :: 32
+YELLOW :: 33
+BLUE :: 34
+MAGENTA :: 35
+CYAN :: 36
+WHITE :: 37
+
 foreign linenoise {
 	linenoise :: proc(prompt: cstring) -> cstring ---
 	linenoiseFree :: proc(ptr: rawptr) ---
+
 	linenoiseEditStart :: proc(l: ^linenoiseState, stdin_fd: c.int, stdout_fd: c.int, buf: [^]byte, buflen: c.size_t, prompt: cstring) -> c.int ---
 	linenoiseEditFeed :: proc(l: ^linenoiseState) -> cstring ---
 	linenoiseEditStop :: proc(l: ^linenoiseState) ---
 	linenoiseHide :: proc(l: ^linenoiseState) ---
 	linenoiseShow :: proc(l: ^linenoiseState) ---
+
+	linenoiseSetHintsCallback :: proc(cb: proc "c" (buf: cstring, color: ^c.int, bold: ^c.int) -> cstring) ---
+
+	linenoiseHistoryAdd :: proc(line: cstring) -> c.int ---
+	linenoiseHistorySetMaxLen :: proc(len: c.int) -> c.int ---
+	linenoiseHistorySave :: proc(filename: cstring) -> c.int ---
+	linenoiseHistoryLoad :: proc(filename: cstring) -> c.int ---
 }

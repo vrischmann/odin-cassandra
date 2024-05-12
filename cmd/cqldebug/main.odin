@@ -1,5 +1,6 @@
 package main
 
+import "core:c"
 import "core:c/libc"
 import "core:fmt"
 import "core:log"
@@ -30,23 +31,49 @@ REPL :: struct {
 
 	ls: linenoise.linenoiseState,
 	ls_buf: [1024]byte,
+	ls_history_filename: string,
+
 	running: bool,
 	pending: int,
 
 	connections: [dynamic]cql.Connection,
 }
 
-repl_init :: proc(repl: ^REPL, ring: ^mio.ring) -> (err: Error) {
+repl_init :: proc(repl: ^REPL, history_filename: string, ring: ^mio.ring) -> (err: Error) {
 	repl.ring = ring
+	repl.ls_history_filename = history_filename
 
-	repl_init_linenoise(repl)
+	repl_linenoise_init(repl)
+	repl_linenoise_reset(repl)
+
 	repl.running = true
 	repl.pending = 0
 
 	return nil
 }
 
-repl_init_linenoise :: proc(repl: ^REPL) {
+repl_linenoise_init :: proc(repl: ^REPL) {
+	linenoise.linenoiseSetHintsCallback(repl_linenoise_hints_callback)
+
+	history_filename := strings.clone_to_cstring(repl.ls_history_filename, context.temp_allocator)
+
+	linenoise.linenoiseHistoryLoad(history_filename)
+	linenoise.linenoiseHistorySetMaxLen(1000)
+}
+
+repl_linenoise_hints_callback :: proc "c" (buf: cstring, color: ^c.int, bold: ^c.int) -> cstring {
+	buf := string(buf)
+
+	if len(buf) >= 2 && buf[:2] == "co" {
+		color^ = linenoise.MAGENTA
+		bold^ = 1
+		return " <endpoint>"
+	}
+
+	return nil
+}
+
+repl_linenoise_reset :: proc(repl: ^REPL) {
 	linenoise.linenoiseEditStart(&repl.ls, -1, -1, raw_data(repl.ls_buf[:]), len(repl.ls_buf), "cqldebug> ")
 }
 
@@ -77,22 +104,30 @@ do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
 	return nil
 }
 
-repl_run :: proc(repl: ^REPL) -> (err: Error) {
-	process_line :: proc(repl: ^REPL, line: string) {
-		line := strings.trim_space(line)
+repl_process_line :: proc(repl: ^REPL, line: string) {
+	line := strings.trim_space(line)
 
-		switch {
-		case strings.has_prefix(line, "connect"):
-			endpoint := strings.trim_space(line[len("connect"):])
-			if len(endpoint) <= 0 {
-				fmt.println("Usage: connect <hostname>")
-				return
-			}
-
-			fmt.printf("endpoint: %v\n", endpoint)
+	switch {
+	case strings.has_prefix(line, "connect"):
+		endpoint := strings.trim_space(line[len("connect"):])
+		if len(endpoint) <= 0 {
+			fmt.println("Usage: connect <hostname>")
+			return
 		}
-	}
 
+		fmt.printf("endpoint: %v\n", endpoint)
+
+
+		cline := strings.clone_to_cstring(line, context.temp_allocator)
+		history_filename := strings.clone_to_cstring(repl.ls_history_filename, context.temp_allocator)
+
+		linenoise.linenoiseHistoryAdd(cline)
+		linenoise.linenoiseHistorySave(history_filename)
+	}
+}
+
+
+repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	process_cqe :: proc(cqe: ^mio.io_uring_cqe) {
 		repl := (^REPL)(context.user_ptr)
 
@@ -116,9 +151,8 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 
 			fmt.printf("you wrote: %q\n", line)
 
-			process_line(repl, string(line))
-
-			repl_init_linenoise(repl)
+			repl_process_line(repl, string(line))
+			repl_linenoise_reset(repl)
 
 		case:
 			conn := (^cql.Connection)(uintptr(cqe.user_data))
@@ -214,6 +248,8 @@ main :: proc() {
 	//
 	//
 
+	history_filename := ".cqldebug.history"
+
 	// Initialization
 	ring: mio.ring = {}
 	if err := mio.ring_init(&ring, 1024); err != nil {
@@ -222,7 +258,7 @@ main :: proc() {
 	defer mio.ring_destroy(&ring)
 
 	repl: REPL = {}
-	if err := repl_init(&repl, &ring); err != nil {
+	if err := repl_init(&repl, history_filename, &ring); err != nil {
 		log.fatalf("unable to initialize the repl, err: %v", err)
 	}
 
