@@ -260,6 +260,8 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	}
 
 	// Sanity checks
+	//
+	// TODO(vincent): handle this better, trigger another write
 	{
 		n := int(cqe.res)
 		switch {
@@ -270,7 +272,7 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 		}
 	}
 
-	// TODO(vincent): write this
+	//
 
 	conn.stage = .Read_Frame
 
@@ -299,7 +301,7 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 		return .Short_Buffer
 	}
 
-	// Do stuff with the data
+	//
 
 	read_data := conn.buf[0:n]
 	log.infof("read data: %q", string(read_data))
@@ -307,16 +309,17 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	if conn.framing_enabled {
 		unimplemented("not implemented")
 	} else {
-
 		envelope := parse_envelope(read_data) or_return
+
+		#partial switch envelope.header.opcode {
+		case .SUPPORTED:
+
+		}
 
 		fmt.printf("envelope: %v", envelope)
 	}
 
-
 	clear(&conn.buf)
-
-	// TODO(vincent): write me
 
 	return nil
 }
