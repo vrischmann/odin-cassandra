@@ -1,0 +1,17 @@
+{
+   DNS-initialization-by-runtime
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:runtime._heap_alloc*
+   fun:runtime.heap_alloc
+   fun:runtime.heap_allocator_proc.aligned_alloc-0
+   fun:runtime.heap_allocator_proc
+   fun:runtime.mem_alloc_bytes
+   fun:runtime.make_aligned*
+   fun:runtime.make_slice*
+   fun:strings.clone
+   fun:net.replace_environment_path
+   fun:net.init_dns_configuration
+   fun:__$startup_runtime
+}
