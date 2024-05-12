@@ -28,10 +28,10 @@ linenoiseState :: struct {
 }
 
 foreign linenoise {
-	// linenoise :: proc(prompt: cstring) -> cstring ---
-	// linenoiseFree :: proc(ptr: rawptr) ---
+	linenoise :: proc(prompt: cstring) -> cstring ---
+	linenoiseFree :: proc(ptr: rawptr) ---
 	linenoiseEditStart :: proc(l: ^linenoiseState, stdin_fd: c.int, stdout_fd: c.int, buf: [^]byte, buflen: c.size_t, prompt: cstring) -> c.int ---
-	linenoiseEditFeed :: proc(l: ^linenoiseState) ---
+	linenoiseEditFeed :: proc(l: ^linenoiseState) -> cstring ---
 	linenoiseEditStop :: proc(l: ^linenoiseState) ---
 	linenoiseHide :: proc(l: ^linenoiseState) ---
 	linenoiseShow :: proc(l: ^linenoiseState) ---

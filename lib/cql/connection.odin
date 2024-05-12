@@ -15,7 +15,7 @@ Connection_Id :: distinct int
 Connection_Error :: union #shared_nil {
 	runtime.Allocator_Error,
 	io.Error,
-	mio.OS_Error,
+	mio.Error,
 	Process_Error,
 }
 

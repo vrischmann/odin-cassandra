@@ -6,7 +6,7 @@ import "core:log"
 import "core:c/libc"
 import "core:net"
 
-OS_Error :: enum {
+Error :: enum {
 	None = 0,
 	Access_Denied,
 	Invalid_Argument,
@@ -19,11 +19,7 @@ OS_Error :: enum {
 	Unexpected,
 }
 
-Error :: union #shared_nil {
-	OS_Error,
-}
-
-os_err_from_errno :: proc(#any_int errno: os.Errno) -> OS_Error {
+os_err_from_errno :: proc(#any_int errno: os.Errno) -> Error {
 	switch errno {
 	case os.EACCES:
 		return .Access_Denied

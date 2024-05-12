@@ -19,7 +19,7 @@ Cli_Error :: enum {
 }
 
 Error :: union #shared_nil {
-	mio.OS_Error,
+	mio.Error,
 	cql.Connection_Error,
 	Cli_Error,
 }
@@ -27,15 +27,27 @@ Error :: union #shared_nil {
 REPL :: struct {
 	ring: ^mio.ring,
 
+	ls: linenoise.linenoiseState,
+	ls_buf: [1024]byte,
+	running: bool,
+
 	connections: [dynamic]cql.Connection,
 }
 
-init_repl :: proc(repl: ^REPL, ring: ^mio.ring) -> (err: Error) {
+repl_init :: proc(repl: ^REPL, ring: ^mio.ring) -> (err: Error) {
 	repl.ring = ring
+
+	repl_init_linenoise(repl)
+	repl.running = true
+
 	return nil
 }
 
-destroy_repl :: proc(repl: ^REPL) {
+repl_init_linenoise :: proc(repl: ^REPL) {
+	linenoise.linenoiseEditStart(&repl.ls, -1, -1, raw_data(repl.ls_buf[:]), len(repl.ls_buf), "cqldebug> ")
+}
+
+repl_destroy :: proc(repl: ^REPL) {
 	for &conn in repl.connections {
 		cql.destroy_connection(&conn)
 	}
@@ -62,47 +74,62 @@ do_connect :: proc(repl: ^REPL, endpoint_str: string) -> (err: Error) {
 	return nil
 }
 
-run_repl :: proc(repl: ^REPL) -> (err: Error) {
-	// Process CQE callback
-	// callback :: proc(cqe: ^mio.io_uring_cqe) {
-	// }
-
-	// Submit SQEs, process CQEs
-	tick :: proc(repl: ^REPL, nr_wait: int) -> Error {
-		err := mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
-			conn := (^cql.Connection)(uintptr(cqe.user_data))
-
-			if err := cql.process_cqe(conn, cqe); err != nil {
-				log.errorf("unable to process cqe")
-			}
-		})
-		switch e in err {
-		case mio.OS_Error:
-			return e
-		}
-
-		return nil
-	}
-
-	// Initialize linenoise
-
-	ls: linenoise.linenoiseState = {}
-	buf: [1024]byte = {}
-
-	linenoise.linenoiseEditStart(&ls, -1, -1, raw_data(buf[:]), len(buf), "cqldebug> ")
-
-	//
-
+repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	issue_stdin_poll := true
+	pending := 0
 
-	for {
+	for repl.running {
 		// Issue a multishot poll on stdin if necessary
 
 		if issue_stdin_poll {
-			STDIN :: 1
+			sqe := mio.ring_poll_multishot(repl.ring, 1, unix.POLLIN)
+			sqe.user_data = 1
 
-			sqe := mio.ring_poll_multishot(repl.ring, STDIN, unix.POLLIN)
+			issue_stdin_poll = false
 		}
+
+		nr_wait := max(1, pending)
+
+		context.user_ptr = rawptr(repl)
+
+		err := mio.ring_submit_and_wait(repl.ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
+			repl := (^REPL)(context.user_ptr)
+
+			switch cqe.user_data {
+			case 1:
+				// stdin is ready
+				line := linenoise.linenoiseEditFeed(&repl.ls)
+				if line == linenoise.linenoiseEditMore {
+					return
+				}
+
+				// either we got a line or the user has exited; reset the state
+				linenoise.linenoiseEditStop(&repl.ls)
+
+				if line == nil {
+					repl.running = false
+					return
+				}
+
+				defer linenoise.linenoiseFree(transmute(rawptr) line)
+
+				fmt.printf("you wrote: %q\n", line)
+
+				repl_init_linenoise(repl)
+
+			case:
+				conn := (^cql.Connection)(uintptr(cqe.user_data))
+
+				if err := cql.process_cqe(conn, cqe); err != nil {
+					log.errorf("unable to process cqe")
+				}
+			}
+		})
+		if err != nil {
+			return err
+		}
+
+		context.user_ptr = nil
 	}
 
 	// for {
@@ -189,12 +216,12 @@ main :: proc() {
 	defer mio.ring_destroy(&ring)
 
 	repl: REPL = {}
-	if err := init_repl(&repl, &ring); err != nil {
+	if err := repl_init(&repl, &ring); err != nil {
 		log.fatalf("unable to initialize the repl, err: %v", err)
 	}
 
 	// Run the client
-	if err := run_repl(&repl); err != nil {
+	if err := repl_run(&repl); err != nil {
 		log.fatalf("unable to run, err: %v", err)
 	}
 }
