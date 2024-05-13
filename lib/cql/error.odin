@@ -11,5 +11,5 @@ Error :: union #shared_nil {
 	mio.Error,
 	Process_Error,
 	Envelope_Parse_Error,
-	Envelope_Body_Build_Error,
+	Envelope_Body_Append_Error,
 }

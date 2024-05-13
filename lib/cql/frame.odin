@@ -174,7 +174,7 @@ envelope_append :: proc{
 // Envelope body primitives
 //
 
-Envelope_Body_Build_Error :: enum {
+Envelope_Body_Append_Error :: enum {
 	None = 0,
 	String_Too_Long,
 	Bytes_Too_Long,
