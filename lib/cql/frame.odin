@@ -124,6 +124,7 @@ Envelope_Direction :: enum {
 	Response,
 }
 
+@(private)
 envelope_append_header_version :: proc(buf: ^[dynamic]byte, version: ProtocolVersion, direction: Envelope_Direction) -> (err: Error) {
 	switch direction {
 	case .Request:
