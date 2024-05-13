@@ -180,6 +180,11 @@ Envelope_Body_Append_Error :: enum {
 	Bytes_Too_Long,
 }
 
+Envelope_Body_Read_Error :: enum {
+	None = 0,
+	Too_Short,
+}
+
 envelope_body_append_int :: proc(buf: ^[dynamic]byte, n: i32) -> (err: Error) {
 	tmp_buf: [4]byte = {}
 	endian.put_i32(tmp_buf[:], .Big, n)
@@ -187,6 +192,16 @@ envelope_body_append_int :: proc(buf: ^[dynamic]byte, n: i32) -> (err: Error) {
 	append(buf, ..tmp_buf[:]) or_return
 
 	return nil
+}
+
+envelope_body_read_int :: proc(buf: []byte) -> (res: i32, err: Error) {
+	if len(buf) < 4 {
+		return res, .Too_Short
+	}
+
+	res = endian.get_i32(buf[:], .Big) or_else 0
+
+	return
 }
 
 envelope_body_append_long :: proc(buf: ^[dynamic]byte, n: i64) -> (err: Error) {

@@ -117,18 +117,25 @@ test_envelope_append :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_envelope_body :: proc(t: ^testing.T) {
+test_envelope_body_int :: proc(t: ^testing.T) {
 	// [int]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
-		err := envelope_body_append_int(&buf, i32(40))
-		testing.expectf(t, err == nil, "got error: %v", err)
+	buf := [dynamic]byte{}
+	defer delete(buf)
 
-		expect_equal_slices(t, buf[:], []byte{0x00, 0x00, 0x00, 0x28})
-	}
+	err := envelope_body_append_int(&buf, i32(40))
+	testing.expectf(t, err == nil, "got error: %v", err)
 
+	expect_equal_slices(t, buf[:], []byte{0x00, 0x00, 0x00, 0x28})
+
+	n, err2 := envelope_body_read_int(buf[:])
+	testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+	testing.expect_value(t, n, 40)
+}
+
+@(test)
+test_envelope_body :: proc(t: ^testing.T) {
 	// [long]
 	{
 		buf := [dynamic]byte{}

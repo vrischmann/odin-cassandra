@@ -12,4 +12,5 @@ Error :: union #shared_nil {
 	Process_Error,
 	Envelope_Parse_Error,
 	Envelope_Body_Append_Error,
+	Envelope_Body_Read_Error,
 }
