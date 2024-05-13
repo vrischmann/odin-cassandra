@@ -104,7 +104,19 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 }
 
 //
-// Envelopes
+// Specific envelope bodies
+//
+
+Envelope_SUPPORTED :: struct {
+	options: map[string][]string,
+}
+
+envelope_parse_supported :: proc(data: []byte) -> (res: Envelope_SUPPORTED, err: Error) {
+	unimplemented("not implemented")
+}
+
+//
+// Envelope primitives
 //
 
 Envelope_Direction :: enum {
