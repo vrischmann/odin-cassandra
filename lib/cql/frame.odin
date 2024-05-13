@@ -69,9 +69,9 @@ Envelope_Parse_Error :: enum {
 
 @(private)
 parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
-	FRAME_HEADER_SIZE :: 9
+	ENVELOPE_HEADER_SIZE :: 9
 
-	if len(data) <  FRAME_HEADER_SIZE {
+	if len(data) <  ENVELOPE_HEADER_SIZE {
 		return {}, .Envelope_Too_Short
 	}
 
