@@ -12,15 +12,6 @@ import "cassandra:mio"
 
 Connection_Id :: distinct int
 
-Error :: union #shared_nil {
-	runtime.Allocator_Error,
-	io.Error,
-	mio.Error,
-	Process_Error,
-	Envelope_Parse_Error,
-	Envelope_Body_Build_Error,
-}
-
 Connection_Stage :: enum {
 	Invalid = 0,
 	Create_Socket,
