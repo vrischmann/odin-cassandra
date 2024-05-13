@@ -1,11 +1,11 @@
 package cql
 
+import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:log"
 import "core:net"
 import "core:os"
-import "core:runtime"
 import "core:time"
 
 import "cassandra:mio"

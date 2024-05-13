@@ -1,11 +1,11 @@
 package cql
 
 import "base:intrinsics"
+import "base:runtime"
 import "core:encoding/endian"
 import "core:fmt"
 import mathbits "core:math/bits"
 import "core:net"
-import "core:runtime"
 
 UncompressedFrame :: struct {
 }
