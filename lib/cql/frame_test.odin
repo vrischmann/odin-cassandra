@@ -330,21 +330,23 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 
 @(test)
 test_envelope_body_value :: proc(t: ^testing.T) {
+	// TODO(vincent): enable this once the compiler is fixed
+	//
 	// [value] - with data
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
-
-		err := envelope_body_append_value(&buf, Data_Value([]byte{
-			0xde, 0xad, 0xbe, 0xef,
-		}))
-		testing.expectf(t, err == nil, "got error: %v", err)
-
-		// expect_equal_slices(t, buf[:], []byte{
-		// 	0x00, 0x00, 0x00, 0x04,
-		// 	0xde, 0xad, 0xbe, 0xef,
-		// })
-	}
+	// {
+	// 	buf := [dynamic]byte{}
+	// 	defer delete(buf)
+	//
+	// 	err := envelope_body_append_value(&buf, Data_Value([]byte{
+	// 		0xde, 0xad, 0xbe, 0xef,
+	// 	}))
+	// 	testing.expectf(t, err == nil, "got error: %v", err)
+	//
+	// 	// expect_equal_slices(t, buf[:], []byte{
+	// 	// 	0x00, 0x00, 0x00, 0x04,
+	// 	// 	0xde, 0xad, 0xbe, 0xef,
+	// 	// })
+	// }
 
 	// [value] - null
 	{
@@ -357,20 +359,32 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 		expect_equal_slices(t, buf[:], []byte{
 			0xff, 0xff, 0xff, 0xff,
 		})
+
+		value, _, err2 := envelope_body_read_value(buf[:])
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+		_, ok := value.(Null_Value)
+		testing.expectf(t, ok, "value is %v, should be %v", value, Null_Value{})
 	}
-	//
-	// // [value] - not set
-	// {
-	// 	buf := [dynamic]byte{}
-	// 	defer delete(buf)
-	//
-	// 	err := envelope_body_append_value(&buf, Not_Set_Value{})
-	// 	testing.expectf(t, err == nil, "got error: %v", err)
-	//
-	// 	expect_equal_slices(t, buf[:], []byte{
-	// 		0xff, 0xff, 0xff, 0xfe,
-	// 	})
-	// }
+
+	// [value] - not set
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		err := envelope_body_append_value(&buf, Not_Set_Value{})
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_equal_slices(t, buf[:], []byte{
+			0xff, 0xff, 0xff, 0xfe,
+		})
+
+		value, _, err2 := envelope_body_read_value(buf[:])
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+		_, ok := value.(Not_Set_Value)
+		testing.expectf(t, ok, "value is %v, should be %v", value, Not_Set_Value{})
+	}
 }
 
 @(test)
