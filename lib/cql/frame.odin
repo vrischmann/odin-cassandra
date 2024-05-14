@@ -213,9 +213,29 @@ envelope_body_append_long :: proc(buf: ^[dynamic]byte, n: i64) -> (err: Error) {
 	return nil
 }
 
+envelope_body_read_long :: proc(buf: []byte) -> (res: i64, err: Error) {
+	if len(buf) < 8 {
+		return res, .Too_Short
+	}
+
+	res = endian.get_i64(buf[:], .Big) or_else 0
+
+	return
+}
+
 envelope_body_append_byte :: proc(buf: ^[dynamic]byte, b: u8) -> (err: Error) {
 	append(buf, b) or_return
 	return nil
+}
+
+envelope_body_read_byte :: proc(buf: []byte) -> (res: u8, err: Error) {
+	if len(buf) < 1 {
+		return res, .Too_Short
+	}
+
+	res = buf[0]
+
+	return
 }
 
 envelope_body_append_short :: proc(buf: ^[dynamic]byte, n: u16) -> (err: Error) {
@@ -227,6 +247,17 @@ envelope_body_append_short :: proc(buf: ^[dynamic]byte, n: u16) -> (err: Error) 
 	return nil
 }
 
+envelope_body_read_short :: proc(buf: []byte) -> (res: u16, err: Error) {
+	if len(buf) < 2 {
+		return res, .Too_Short
+	}
+
+	res = endian.get_u16(buf[:], .Big) or_else 0
+
+	return
+}
+
+
 envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) {
 	if len(str) >= mathbits.U16_MAX {
 		return .String_Too_Long
@@ -236,6 +267,16 @@ envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: E
 	append(buf, str) or_return
 
 	return nil
+}
+
+envelope_body_read_string :: proc(buf: []byte)  -> (str: string, err: Error) {
+	n := envelope_body_read_short(buf) or_return
+
+	buf = buf[2:]
+
+	str = string(buf[:n])
+
+	return
 }
 
 envelope_body_append_long_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) {
