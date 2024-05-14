@@ -391,6 +391,15 @@ envelope_body_append_short_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> 
 	return nil
 }
 
+envelope_body_read_short_bytes :: proc(buf: []byte) -> (res: []byte, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_short(buf) or_return
+
+	res = tmp_buf[:n]
+	new_buf = tmp_buf[n:]
+
+	return
+}
+
 // Values
 
 Data_Value :: distinct []byte

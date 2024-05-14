@@ -388,25 +388,30 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_envelope_body :: proc(t: ^testing.T) {
-
-
+test_envelope_body_short_bytes :: proc(t: ^testing.T) {
 	// [short bytes]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
-		err := envelope_body_append_short_bytes(&buf, []byte{
-			0xde, 0xad, 0xbe, 0xef,
-		})
-		testing.expectf(t, err == nil, "got error: %v", err)
+	buf := [dynamic]byte{}
+	defer delete(buf)
 
-		expect_equal_slices(t, buf[:], []byte{
-			0x00, 0x04,
-			0xde, 0xad, 0xbe, 0xef,
-		})
-	}
+	exp := []byte{0xde, 0xad, 0xbe, 0xef}
 
+	err := envelope_body_append_short_bytes(&buf, exp)
+	testing.expectf(t, err == nil, "got error: %v", err)
+
+	expect_equal_slices(t, buf[:], []byte{
+		0x00, 0x04,
+		0xde, 0xad, 0xbe, 0xef,
+	})
+
+	bytes, _, err2 := envelope_body_read_short_bytes(buf[:])
+	testing.expectf(t, err2 == nil, "got error: %v", err2)
+
+	expect_equal_slices(t, bytes, exp)
+}
+
+@(test)
+test_envelope_body :: proc(t: ^testing.T) {
 	// [unsigned vint]
 	{
 		buf := [dynamic]byte{}
