@@ -194,12 +194,14 @@ envelope_body_append_int :: proc(buf: ^[dynamic]byte, n: i32) -> (err: Error) {
 	return nil
 }
 
-envelope_body_read_int :: proc(buf: []byte) -> (res: i32, err: Error) {
+envelope_body_read_int :: proc(buf: []byte) -> (res: i32, new_buf: []byte, err: Error) {
 	if len(buf) < 4 {
-		return res, .Too_Short
+		err = .Too_Short
+		return
 	}
 
 	res = endian.get_i32(buf[:], .Big) or_else 0
+	new_buf = buf[4:]
 
 	return
 }
@@ -213,12 +215,15 @@ envelope_body_append_long :: proc(buf: ^[dynamic]byte, n: i64) -> (err: Error) {
 	return nil
 }
 
-envelope_body_read_long :: proc(buf: []byte) -> (res: i64, err: Error) {
+@(private)
+envelope_body_read_long :: proc(buf: []byte) -> (res: i64, new_buf: []byte, err: Error) {
 	if len(buf) < 8 {
-		return res, .Too_Short
+		err = .Too_Short
+		return
 	}
 
 	res = endian.get_i64(buf[:], .Big) or_else 0
+	new_buf = buf[:8]
 
 	return
 }
@@ -228,12 +233,14 @@ envelope_body_append_byte :: proc(buf: ^[dynamic]byte, b: u8) -> (err: Error) {
 	return nil
 }
 
-envelope_body_read_byte :: proc(buf: []byte) -> (res: u8, err: Error) {
+envelope_body_read_byte :: proc(buf: []byte) -> (res: u8, new_buf: []byte, err: Error) {
 	if len(buf) < 1 {
-		return res, .Too_Short
+		err = .Too_Short
+		return
 	}
 
 	res = buf[0]
+	new_buf = buf[1:]
 
 	return
 }
@@ -247,16 +254,17 @@ envelope_body_append_short :: proc(buf: ^[dynamic]byte, n: u16) -> (err: Error) 
 	return nil
 }
 
-envelope_body_read_short :: proc(buf: []byte) -> (res: u16, err: Error) {
+envelope_body_read_short :: proc(buf: []byte) -> (res: u16, new_buf: []byte, err: Error) {
 	if len(buf) < 2 {
-		return res, .Too_Short
+		err = .Too_Short
+		return
 	}
 
 	res = endian.get_u16(buf[:], .Big) or_else 0
+	new_buf = buf[2:]
 
 	return
 }
-
 
 envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) {
 	if len(str) >= mathbits.U16_MAX {
@@ -269,12 +277,11 @@ envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: E
 	return nil
 }
 
-envelope_body_read_string :: proc(buf: []byte)  -> (str: string, err: Error) {
-	n := envelope_body_read_short(buf) or_return
+envelope_body_read_string :: proc(buf: []byte)  -> (str: string, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_short(buf) or_return
 
-	buf = buf[2:]
-
-	str = string(buf[:n])
+	str = string(tmp_buf[:n])
+	new_buf = tmp_buf[n:]
 
 	return
 }
@@ -290,6 +297,15 @@ envelope_body_append_long_string :: proc(buf: ^[dynamic]byte, str: string) -> (e
 	return nil
 }
 
+envelope_body_read_long_string :: proc(buf: []byte)  -> (str: string, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_int(buf) or_return
+
+	str = string(tmp_buf[:n])
+	new_buf = tmp_buf[n:]
+
+	return
+}
+
 UUID :: distinct [16]byte
 
 envelope_body_append_uuid :: proc(buf: ^[dynamic]byte, uuid: UUID) -> (err: Error) {
@@ -299,12 +315,39 @@ envelope_body_append_uuid :: proc(buf: ^[dynamic]byte, uuid: UUID) -> (err: Erro
 	return nil
 }
 
+envelope_body_read_uuid :: proc(buf: []byte) -> (res: UUID, new_buf: []byte, err: Error) {
+	if len(buf) < size_of(UUID) {
+		err = .Too_Short
+		return
+	}
+
+	copy(res[:], buf[:size_of(UUID)])
+	new_buf = buf[:size_of(UUID)]
+
+	return
+}
+
 envelope_body_append_string_list :: proc(buf: ^[dynamic]byte, strings: []string) -> (err: Error) {
 	envelope_body_append_short(buf, u16(len(strings))) or_return
 	for string in strings {
 		envelope_body_append_string(buf, string) or_return
 	}
 	return nil
+}
+
+envelope_body_read_string_list :: proc(buf: []byte, allocator := context.temp_allocator) -> (res: []string, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_short(buf) or_return
+
+	res = make([]string, n, allocator = allocator)
+	for i in 0..<n {
+		str: string
+		str, tmp_buf = envelope_body_read_string(tmp_buf) or_return
+		res[i] = str
+	}
+
+	new_buf = tmp_buf
+
+	return
 }
 
 // Bytes stuff
@@ -324,6 +367,20 @@ envelope_body_append_null_bytes :: proc(buf: ^[dynamic]byte) -> (err: Error) {
 	return nil
 }
 
+envelope_body_read_bytes :: proc(buf: []byte) -> (res: []byte, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_int(buf) or_return
+
+	if n == -1 {
+		res = nil
+		return
+	}
+
+	res = tmp_buf[:n]
+	new_buf = tmp_buf[n:]
+
+	return
+}
+
 envelope_body_append_short_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> (err: Error) {
 	if len(bytes) >= mathbits.U16_MAX {
 		return .Bytes_Too_Long
@@ -336,19 +393,47 @@ envelope_body_append_short_bytes :: proc(buf: ^[dynamic]byte, bytes: []byte) -> 
 
 // Values
 
-envelope_body_append_value :: proc(buf: ^[dynamic]byte, value: []byte) -> (err: Error) {
-	envelope_body_append_bytes(buf, value) or_return
+Data_Value :: distinct []byte
+Null_Value :: struct {}
+Not_Set_Value :: struct {}
+
+Value :: union {
+	Data_Value,
+	Null_Value,
+	Not_Set_Value,
+}
+
+envelope_body_append_value :: proc(buf: ^[dynamic]byte, value: Value) -> (err: Error) {
+	switch v in value {
+	case Data_Value:
+		envelope_body_append_bytes(buf, cast([]byte) v) or_return
+
+	case Null_Value:
+		envelope_body_append_int(buf, -1) or_return
+
+	case Not_Set_Value:
+		envelope_body_append_int(buf, -2) or_return
+	}
+
 	return nil
 }
 
-envelope_body_append_null_value :: proc(buf: ^[dynamic]byte) -> (err: Error) {
-	envelope_body_append_int(buf, -1) or_return
-	return nil
-}
+envelope_body_read_value :: proc(buf: []byte) -> (res: Value, new_buf: []byte, err: Error) {
+	n, tmp_buf := envelope_body_read_int(buf) or_return
 
-envelope_body_append_not_set_value :: proc(buf: ^[dynamic]byte) -> (err: Error) {
-	envelope_body_append_int(buf, -2) or_return
-	return nil
+	switch n {
+	case -1:
+		res = Null_Value{}
+		new_buf = tmp_buf
+	case -2:
+		res = Not_Set_Value{}
+		new_buf = tmp_buf
+	case:
+		res = Data_Value(tmp_buf[:n])
+		new_buf = tmp_buf[n:]
+	}
+
+	return
 }
 
 // Variable length integer
