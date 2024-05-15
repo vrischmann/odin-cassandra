@@ -411,12 +411,13 @@ test_envelope_body_short_bytes :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_envelope_body :: proc(t: ^testing.T) {
+test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
 	// [unsigned vint]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
+	buf := [dynamic]byte{}
+	defer delete(buf)
+
+	{
 		err := envelope_body_append_unsigned_vint(&buf, u64(282240))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
@@ -433,6 +434,19 @@ test_envelope_body :: proc(t: ^testing.T) {
 		})
 	}
 
+	{
+		n: u64 = 0
+		err: Error = {}
+
+		n, _, err = envelope_body_read_unsigned_vint(buf[:])
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		testing.expect_value(t, n, u64(282240))
+	}
+}
+
+@(test)
+test_envelope_body :: proc(t: ^testing.T) {
 	// [vint]
 	{
 		buf := [dynamic]byte{}
