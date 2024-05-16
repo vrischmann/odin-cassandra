@@ -3,14 +3,6 @@
   "verbose": true,
   "collections": [
     {
-      "name": "custom_collection",
-      "path": "/home/vincent/dev/perso/projects"
-    },
-    {
-      "name": "custom_collection",
-      "path": "/home/vincent/dev/devtools"
-    },
-    {
       "name": "cassandra",
       "path": "/home/vincent/dev/perso/projects/odin-cassandra/lib"
     },
