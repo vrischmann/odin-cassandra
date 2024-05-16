@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/DanielGavin/ols/master/misc/ols.schema.json",
+  "verbose": true,
   "collections": [
     {
       "name": "custom_collection",
@@ -8,7 +9,7 @@
     {
       "name": "custom_collection",
       "path": "/home/vincent/dev/devtools"
-    }
+    },
     {
       "name": "cassandra",
       "path": "/home/vincent/dev/perso/projects/odin-cassandra/lib"
@@ -22,14 +23,13 @@
   "enable_document_symbols": true,
   "enable_hover": true,
   "enable_snippets": true,
+  "enable_inlay_hints": true,
   "profile": "default",
   "profiles": [
     {
       "name": "default",
       "checker_path": [
         "cmd/cqldebug",
-        "lib/cql",
-        "lib/mio"
       ]
     }
   ]
