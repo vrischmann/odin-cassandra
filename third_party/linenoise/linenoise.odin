@@ -1,8 +1,8 @@
 package linenoise
 
+import "base:runtime"
 import "core:c"
 import "core:fmt"
-import "base:runtime"
 
 // TODO(vincent): fork/port linenoise to work natively with io_uring ?
 //
@@ -13,20 +13,20 @@ foreign import linenoise "src/linenoise.a"
 linenoiseEditMore: cstring = "If you see this, you are misusing the API: when linenoiseEditFeed() is called, if it returns linenoiseEditMore the user is yet editing the line. See the README file for more information."
 
 linenoiseState :: struct {
-	in_completion: c.int,
+	in_completion:  c.int,
 	completion_idx: c.size_t,
-	ifd: c.int,
-	ofd: c.int,
-	buf: [^]byte,
-	buflen: c.size_t,
-	prompt: cstring,
-	plen: c.size_t,
-	pos: c.size_t,
-	oldpos: c.size_t,
-	len: c.size_t,
-	cols: c.size_t,
-	oldrows: c.size_t,
-	history_index: c.int,
+	ifd:            c.int,
+	ofd:            c.int,
+	buf:            [^]byte,
+	buflen:         c.size_t,
+	prompt:         cstring,
+	plen:           c.size_t,
+	pos:            c.size_t,
+	oldpos:         c.size_t,
+	len:            c.size_t,
+	cols:           c.size_t,
+	oldrows:        c.size_t,
+	history_index:  c.int,
 }
 
 RED :: 31

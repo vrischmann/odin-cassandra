@@ -11,13 +11,14 @@ ring :: struct {
 	underlying: io_uring,
 }
 
-ring_init :: proc(ring: ^ring, entries: int) -> (Error) {
+ring_init :: proc(ring: ^ring, entries: int) -> Error {
 	errno := queue_init(c.uint32_t(entries), &ring.underlying, 0)
 	if errno < 0 {
 		return os_err_from_errno(-errno)
 	}
 
-	log.debugf("[ring fd: %v] flags: %v. sb entries=%d, cq entries=%d",
+	log.debugf(
+		"[ring fd: %v] flags: %v. sb entries=%d, cq entries=%d",
 		ring.underlying.ring_fd,
 		ring.underlying.flags,
 		ring.underlying.sq.ring_entries,
@@ -170,4 +171,3 @@ ring_submit_and_wait :: proc(ring: ^ring, #any_int nr_wait: int, process_cqe_cal
 
 	return nil
 }
-

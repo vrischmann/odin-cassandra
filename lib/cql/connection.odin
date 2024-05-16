@@ -18,41 +18,38 @@ Connection_Stage :: enum {
 	Connect_To_Endpoint,
 	Write_Frame,
 	Read_Frame,
-
 	Graceful_Shutdown,
 }
 
 Connection :: struct {
 	// These fields are mandatory and must be provided by the caller either in [init_connection] or [connect_endpoint]
-	ring: ^mio.ring,
-	id: Connection_Id,
-	endpoint: net.Endpoint,
+	ring:                     ^mio.ring,
+	id:                       Connection_Id,
+	endpoint:                 net.Endpoint,
 
 	// These fields are optional but can be set by the caller
-	connect_timeout: time.Duration,
-	read_timeout: time.Duration,
-	write_timeout: time.Duration,
+	connect_timeout:          time.Duration,
+	read_timeout:             time.Duration,
+	write_timeout:            time.Duration,
 
 
 	// These fields are created and managed by the connection itself
-
 	connection_attempt_start: time.Time,
 
 	// Set to true when the connection has closed its socket
 	// TODO(vincent): maybe don't do this ?
-	closed: bool,
-	framing_enabled: bool,
+	closed:                   bool,
+	framing_enabled:          bool,
 
 	// Low level stuff used to drive io_uring
-	socket: os.Socket,
-	sockaddr: os.SOCKADDR,
-	timeout: mio.kernel_timespec,
-	stage: Connection_Stage,
-
-	buf: [dynamic]u8,
+	socket:                   os.Socket,
+	sockaddr:                 os.SOCKADDR,
+	timeout:                  mio.kernel_timespec,
+	stage:                    Connection_Stage,
+	buf:                      [dynamic]u8,
 
 	// TODO(vincent): handle multiple streams
-	stream: u16,
+	stream:                   u16,
 }
 
 connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Error) {
@@ -174,16 +171,16 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error
 	case net.IP4_Address:
 		(^os.sockaddr_in)(&conn.sockaddr)^ = os.sockaddr_in {
 			sin_family = u16(os.AF_INET),
-			sin_port = u16be(conn.endpoint.port),
-			sin_addr = transmute(os.in_addr) a,
-			sin_zero = {},
+			sin_port   = u16be(conn.endpoint.port),
+			sin_addr   = transmute(os.in_addr)a,
+			sin_zero   = {},
 		}
 	case net.IP6_Address:
 		(^os.sockaddr_in6)(&conn.sockaddr)^ = os.sockaddr_in6 {
-			sin6_family = u16(os.AF_INET6),
-			sin6_port = u16be(conn.endpoint.port),
+			sin6_family   = u16(os.AF_INET6),
+			sin6_port     = u16be(conn.endpoint.port),
 			sin6_flowinfo = 0,
-			sin6_addr = transmute(os.in6_addr) a,
+			sin6_addr     = transmute(os.in6_addr)a,
 			sin6_scope_id = 0,
 		}
 	}
@@ -359,4 +356,3 @@ handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> E
 
 	return nil
 }
-

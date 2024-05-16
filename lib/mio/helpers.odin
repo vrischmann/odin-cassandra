@@ -1,10 +1,10 @@
 package mio
 
-import "core:os"
 import "core:c"
-import "core:log"
 import "core:c/libc"
+import "core:log"
 import "core:net"
+import "core:os"
 
 Error :: enum {
 	None = 0,
@@ -17,7 +17,6 @@ Error :: enum {
 	Connection_Refused,
 	Address_Family_Not_Supported,
 	Timed_Out,
-
 	Unexpected,
 }
 

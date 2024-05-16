@@ -18,7 +18,7 @@ import "cassandra:mio"
 import "third_party:linenoise"
 
 Cli_Error :: enum {
-	None = 0,
+	None             = 0,
 	Invalid_Endpoint = 1,
 }
 
@@ -30,18 +30,16 @@ Error :: union #shared_nil {
 }
 
 REPL :: struct {
-	ring: ^mio.ring,
-
-	ls: linenoise.linenoiseState,
-	ls_buf: [1024]byte,
+	ring:                ^mio.ring,
+	ls:                  linenoise.linenoiseState,
+	ls_buf:              [1024]byte,
 	ls_history_filename: string,
-
-	running: bool,
-	pending: int, // TODO(vincent): this doesn't seem useful ?
-	last_submit_time: time.Time,
+	running:             bool,
+	pending:             int, // TODO(vincent): this doesn't seem useful ?
+	last_submit_time:    time.Time,
 
 	// TODO(vincent): implement some client abstraction to talk over multiple connections to multiple servers
-	conn: ^cql.Connection,
+	conn:                ^cql.Connection,
 }
 
 repl_init :: proc(repl: ^REPL, history_filename: string, ring: ^mio.ring) -> (err: Error) {
@@ -167,7 +165,7 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 			return
 		}
 
-		defer linenoise.linenoiseFree(transmute(rawptr) line)
+		defer linenoise.linenoiseFree(transmute(rawptr)line)
 
 		repl_process_line(repl, string(line)) or_return
 		repl_linenoise_reset(repl)
@@ -179,9 +177,9 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 		}
 
 	case 100, 20:
-		// Expected; on some SQE we don't use the connection pointer because it's not absolutely necessary
-		//
-		// We could simply use 0 and don't log anything but while working on this code I want to be able to see when I let 0 by mistake
+	// Expected; on some SQE we don't use the connection pointer because it's not absolutely necessary
+	//
+	// We could simply use 0 and don't log anything but while working on this code I want to be able to see when I let 0 by mistake
 
 	case 0:
 		log.warnf("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
@@ -203,7 +201,8 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 			case .Canceled, .Connection_Refused:
 				#partial switch conn.stage {
 				case .Connect_To_Endpoint:
-					fmt.eprintfln("\x1b[1m\x1b[31munable to connect to endpoint %v: %v\x1b[0m\x1b[22m",
+					fmt.eprintfln(
+						"\x1b[1m\x1b[31munable to connect to endpoint %v: %v\x1b[0m\x1b[22m",
 						net.endpoint_to_string(conn.endpoint),
 						err,
 					)
@@ -218,7 +217,8 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 		case nil:
 			#partial switch result {
 			case .Connection_Established:
-				fmt.printfln("\x1b[1m\x1b[32mconnection to %v established in %v\x1b[0m\x1b[22m",
+				fmt.printfln(
+					"\x1b[1m\x1b[32mconnection to %v established in %v\x1b[0m\x1b[22m",
 					net.endpoint_to_string(conn.endpoint),
 					time.since(conn.connection_attempt_start),
 				)
@@ -309,7 +309,7 @@ main :: proc() {
 	}
 
 	// Setup logger
-	log_file, log_file_errno := os.open(".cqldebug.log", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o0644)
+	log_file, log_file_errno := os.open(".cqldebug.log", os.O_CREATE | os.O_TRUNC | os.O_RDWR, 0o0644)
 	if log_file_errno != 0 {
 		log.fatalf("unable to open log file, err: %v", log_file_errno)
 	}

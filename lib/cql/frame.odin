@@ -7,11 +7,9 @@ import "core:fmt"
 import mathbits "core:math/bits"
 import "core:net"
 
-UncompressedFrame :: struct {
-}
+UncompressedFrame :: struct {}
 
-CompressedFrame :: struct {
-}
+CompressedFrame :: struct {}
 
 Opcode :: enum {
 	ERROR          = 0x00,
@@ -40,10 +38,10 @@ ProtocolVersion :: enum {
 
 EnvelopeHeader :: struct {
 	version: ProtocolVersion,
-	flags: u8,
-	stream: u16,
-	opcode: Opcode,
-	length: u32,
+	flags:   u8,
+	stream:  u16,
+	opcode:  Opcode,
+	length:  u32,
 }
 
 is_request :: proc(header: ^EnvelopeHeader) -> bool {
@@ -58,7 +56,7 @@ EnvelopeBody :: distinct []byte
 
 Envelope :: struct {
 	header: EnvelopeHeader,
-	body: EnvelopeBody,
+	body:   EnvelopeBody,
 }
 
 Envelope_Parse_Error :: enum {
@@ -71,7 +69,7 @@ Envelope_Parse_Error :: enum {
 parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 	ENVELOPE_HEADER_SIZE :: 9
 
-	if len(data) <  ENVELOPE_HEADER_SIZE {
+	if len(data) < ENVELOPE_HEADER_SIZE {
 		return {}, .Envelope_Too_Short
 	}
 
@@ -84,7 +82,7 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 	}
 
 	hdr.flags = data[1]
-	hdr.stream  = endian.get_u16(data[2:4], .Big) or_else 0xAAAA
+	hdr.stream = endian.get_u16(data[2:4], .Big) or_else 0xAAAA
 	hdr.opcode = Opcode(data[4])
 	hdr.length = endian.get_u32(data[5:9], .Big) or_else 0xAAAA_AAAA
 
@@ -92,12 +90,12 @@ parse_envelope :: proc(data: []byte) -> (Envelope, Error) {
 
 	length := int(hdr.length)
 	if length != len(remaining) {
-		return {}, .Invalid_Envelope_Body_Length,
+		return {}, .Invalid_Envelope_Body_Length
 	}
 
-	res := Envelope{
+	res := Envelope {
 		header = hdr,
-		body = EnvelopeBody(remaining),
+		body   = EnvelopeBody(remaining),
 	}
 
 	return res, nil
@@ -136,7 +134,14 @@ envelope_append_header_version :: proc(buf: ^[dynamic]byte, version: ProtocolVer
 	return nil
 }
 
-envelope_append_body :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, body: $B/[]$E/byte, direction: Envelope_Direction = .Request) -> (err: Error) {
+envelope_append_body :: proc(
+	buf: ^[dynamic]byte,
+	hdr: EnvelopeHeader,
+	body: $B/[]$E/byte,
+	direction: Envelope_Direction = .Request,
+) -> (
+	err: Error,
+) {
 	// Write the header
 
 	// Note that we reuse some functions for building the envelope body because they work exactly the same here
@@ -165,7 +170,7 @@ envelope_append_empty_body :: proc(buf: ^[dynamic]byte, hdr: EnvelopeHeader, dir
 	return nil
 }
 
-envelope_append :: proc{
+envelope_append :: proc {
 	envelope_append_body,
 	envelope_append_empty_body,
 }
@@ -277,7 +282,7 @@ envelope_body_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: E
 	return nil
 }
 
-envelope_body_read_string :: proc(buf: []byte)  -> (str: string, new_buf: []byte, err: Error) {
+envelope_body_read_string :: proc(buf: []byte) -> (str: string, new_buf: []byte, err: Error) {
 	n, tmp_buf := envelope_body_read_short(buf) or_return
 
 	str = string(tmp_buf[:n])
@@ -297,7 +302,7 @@ envelope_body_append_long_string :: proc(buf: ^[dynamic]byte, str: string) -> (e
 	return nil
 }
 
-envelope_body_read_long_string :: proc(buf: []byte)  -> (str: string, new_buf: []byte, err: Error) {
+envelope_body_read_long_string :: proc(buf: []byte) -> (str: string, new_buf: []byte, err: Error) {
 	n, tmp_buf := envelope_body_read_int(buf) or_return
 
 	str = string(tmp_buf[:n])
@@ -339,7 +344,7 @@ envelope_body_read_string_list :: proc(buf: []byte, allocator := context.temp_al
 	n, tmp_buf := envelope_body_read_short(buf) or_return
 
 	res = make([]string, n, allocator = allocator)
-	for i in 0..<n {
+	for i in 0 ..< n {
 		str: string
 		str, tmp_buf = envelope_body_read_string(tmp_buf) or_return
 		res[i] = str
@@ -415,7 +420,7 @@ Value :: union {
 envelope_body_append_value :: proc(buf: ^[dynamic]byte, value: Value) -> (err: Error) {
 	switch v in value {
 	case Data_Value:
-		envelope_body_append_bytes(buf, cast([]byte) v) or_return
+		envelope_body_append_bytes(buf, cast([]byte)v) or_return
 
 	case Null_Value:
 		envelope_body_append_int(buf, -1) or_return
@@ -447,9 +452,7 @@ envelope_body_read_value :: proc(buf: []byte) -> (res: Value, new_buf: []byte, e
 
 // Variable length integer
 
-envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
-	where intrinsics.type_is_unsigned(N)
-{
+envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error) where intrinsics.type_is_unsigned(N) {
 	n := n
 
 	tmp_buf: [9]byte = {}
@@ -474,7 +477,7 @@ envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: 
 
 	fmt.printfln("tmp_buf: %b", tmp_buf)
 
-	append(buf, ..tmp_buf[:i+1]) or_return
+	append(buf, ..tmp_buf[:i + 1]) or_return
 
 	return nil
 }
@@ -484,14 +487,14 @@ envelope_body_read_unsigned_vint :: proc(buf: []byte) -> (n: u64, new_buf: []byt
 
 	// loop: for b in buf {
 	for b in buf {
-		tmp := u64(b) & (~ u64(0x80))
+		tmp := u64(b) & (~u64(0x80))
 
 		n |= tmp
 		fmt.printfln("n1: %x (%032b), tmp: %x (%08b), tmp1: %08b", n, n, tmp, tmp, b)
 
 		// if b & 0x80 == 0x80 {
 		// 	fmt.println("lol")
-			n <<= 7
+		n <<= 7
 		// } else {
 		// 	break loop
 		// }
@@ -504,9 +507,7 @@ envelope_body_read_unsigned_vint :: proc(buf: []byte) -> (n: u64, new_buf: []byt
 	return
 }
 
-envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
-	where type_of(n) == i32 || type_of(n) == i64
-{
+envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error) where type_of(n) == i32 || type_of(n) == i64 {
 	when type_of(n) == i32 {
 		tmp := u32(n >> 31) ~ u32(n << 1)
 
@@ -532,9 +533,14 @@ envelope_body_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 
 // Special types
 
-envelope_body_append_inet :: proc(buf: ^[dynamic]byte, address: net.Address, port: $N) -> (err: Error)
-	where intrinsics.type_is_integer(N) && size_of(N) <= 8
-{
+envelope_body_append_inet :: proc(
+	buf: ^[dynamic]byte,
+	address: net.Address,
+	port: $N,
+) -> (
+	err: Error,
+) where intrinsics.type_is_integer(N) &&
+	size_of(N) <= 8 {
 	envelope_body_append_inetaddr(buf, address) or_return
 	envelope_body_append_int(buf, i32(port)) or_return
 
@@ -550,7 +556,7 @@ envelope_body_append_inetaddr :: proc(buf: ^[dynamic]byte, address: net.Address)
 		append(buf, ..addr[:]) or_return
 
 	case net.IP6_Address:
-		addr := transmute([16]byte) v
+		addr := transmute([16]byte)v
 
 		append(buf, 16) or_return
 		append(buf, ..addr[:]) or_return
@@ -580,35 +586,48 @@ envelope_body_append_consistency :: proc(buf: ^[dynamic]byte, consistency: Consi
 
 // Maps
 
-envelope_body_append_string_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V) -> (err: Error)
-	where intrinsics.type_is_string(K) && intrinsics.type_is_string(V)
-{
+envelope_body_append_string_map :: proc(
+	buf: ^[dynamic]byte,
+	m: $M/map[$K]$V,
+) -> (
+	err: Error,
+) where intrinsics.type_is_string(K) &&
+	intrinsics.type_is_string(V) {
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, value in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_string(buf, cast(string) value) or_return
+		envelope_body_append_string(buf, cast(string)value) or_return
 	}
 	return nil
 }
 
-envelope_body_append_string_multimap :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V/[]$E) -> (err: Error)
-	where intrinsics.type_is_string(K) && intrinsics.type_is_slice(V) && intrinsics.type_is_string(E)
-{
+envelope_body_append_string_multimap :: proc(
+	buf: ^[dynamic]byte,
+	m: $M/map[$K]$V/[]$E,
+) -> (
+	err: Error,
+) where intrinsics.type_is_string(K) &&
+	intrinsics.type_is_slice(V) &&
+	intrinsics.type_is_string(E) {
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, list in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_string_list(buf, cast([]string) list) or_return
+		envelope_body_append_string_list(buf, cast([]string)list) or_return
 	}
 	return nil
 }
 
-envelope_body_append_bytes_map :: proc(buf: ^[dynamic]byte, m: $M/map[$K]$V/[]byte) -> (err: Error)
-	where intrinsics.type_is_string(K) && intrinsics.type_is_slice(V)
-{
+envelope_body_append_bytes_map :: proc(
+	buf: ^[dynamic]byte,
+	m: $M/map[$K]$V/[]byte,
+) -> (
+	err: Error,
+) where intrinsics.type_is_string(K) &&
+	intrinsics.type_is_slice(V) {
 	envelope_body_append_short(buf, u16(len(m))) or_return
 	for key, list in m {
 		envelope_body_append_string(buf, key) or_return
-		envelope_body_append_bytes(buf, cast([]byte) list) or_return
+		envelope_body_append_bytes(buf, cast([]byte)list) or_return
 	}
 	return nil
 }
