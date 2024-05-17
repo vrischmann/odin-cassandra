@@ -548,180 +548,175 @@ test_envelope_body_consistency :: proc(t: ^testing.T) {
 	expect_equal_slices(t, buf[:], []byte{0x00, 0x06})
 }
 
-// This test is separate because it requires specific stuff to test maps due to the random iteration order so I'd rather put it in a specific function.
-test_envelope_body_maps :: proc(t: ^testing.T) {
-	check :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte) {
-		if !slice.equal(got, exp1) && !slice.equal(got, exp2) {
-			fmt.printf(" got: %x\n", got)
-			fmt.printf("exp1: %x\n", exp1)
-			fmt.printf("exp2: %x\n", exp2)
-			testing.fail_now(t)
-		}
+check_map :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte, loc := #caller_location) {
+	if !slice.equal(got, exp1) && !slice.equal(got, exp2) {
+		fmt.printf(" got: %x\n", got)
+		fmt.printf("exp1: %x\n", exp1)
+		fmt.printf("exp2: %x\n", exp2)
+		testing.fail_now(t, loc = loc)
 	}
+}
 
+test_envelope_body_string_map :: proc(t: ^testing.T) {
 	// [string map]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
-		m := make(map[string]string)
-		defer delete(m)
+	buf := [dynamic]byte{}
+	defer delete(buf)
 
-		m["foo"] = "bar"
-		m["name"] = "Vincent"
+	m := make(map[string]string)
+	defer delete(m)
 
-		err := envelope_body_append_string_map(&buf, m)
-		testing.expectf(t, err == nil, "got error: %v", err)
-		
-			//odinfmt: disable
-		exp1 := []byte {
-			0x00, 0x02,    // map length
+	m["foo"] = "bar"
+	m["name"] = "Vincent"
 
-			0x00, 0x03,    // key length
-			'f', 'o', 'o', // key data
-			0x00, 0x03,    // value length
-			'b', 'a', 'r', // value data
+	err := envelope_body_append_string_map(&buf, m)
+	testing.expectf(t, err == nil, "got error: %v", err)
 
-			0x00, 0x04,                        // key length
-			'n', 'a', 'm', 'e',                // key data
-			0x00, 0x07,                        // value length
-			'V', 'i', 'n', 'c', 'e', 'n', 't', // value data
-		}
-		//odinfmt: enable
+	
+	//odinfmt: disable
+	exp1 := []byte {
+		0x00, 0x02,    // map length
 
-		
-			//odinfmt: disable
-		exp2 := []byte {
-			0x00, 0x02, // map length
+		0x00, 0x03,    // key length
+		'f', 'o', 'o', // key data
+		0x00, 0x03,    // value length
+		'b', 'a', 'r', // value data
 
-			0x00, 0x04,                        // key length
-			'n', 'a', 'm', 'e',                // key data
-			0x00, 0x07,                        // value length
-			'V', 'i', 'n', 'c', 'e', 'n', 't', // value data
-
-			0x00, 0x03,    // key length
-			'f', 'o', 'o', // key data
-			0x00, 0x03,    // value length
-			'b', 'a', 'r', // value data
-		}
-		//odinfmt: enable
-
-		check(t, buf[:], exp1, exp2)
+		0x00, 0x04,                        // key length
+		'n', 'a', 'm', 'e',                // key data
+		0x00, 0x07,                        // value length
+		'V', 'i', 'n', 'c', 'e', 'n', 't', // value data
 	}
+	//odinfmt: enable
 
+	
+	//odinfmt: disable
+	exp2 := []byte {
+		0x00, 0x02, // map length
+
+		0x00, 0x04,                        // key length
+		'n', 'a', 'm', 'e',                // key data
+		0x00, 0x07,                        // value length
+		'V', 'i', 'n', 'c', 'e', 'n', 't', // value data
+
+		0x00, 0x03,    // key length
+		'f', 'o', 'o', // key data
+		0x00, 0x03,    // value length
+		'b', 'a', 'r', // value data
+	}
+	//odinfmt: enable
+
+	check_map(t, buf[:], exp1, exp2)
+}
+
+test_envelope_body_string_multimap :: proc(t: ^testing.T) {
 	// [string multimap]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
-		m := make(map[string][]string)
-		defer delete(m)
+	buf := [dynamic]byte{}
+	defer delete(buf)
 
-		m["foo"] = []string{"he", "lo"}
-		m["names"] = []string{"Vince", "Jose"}
+	m := make(map[string][]string)
+	defer delete(m)
 
-		err := envelope_body_append_string_multimap(&buf, m)
-		testing.expectf(t, err == nil, "got error: %v", err)
-		
-			//odinfmt: disable
-		exp1 := []byte {
-			0x00, 0x02, // map length
+	m["foo"] = []string{"he", "lo"}
+	m["names"] = []string{"Vince", "Jose"}
 
-			0x00, 0x03,    // key length
-			'f', 'o', 'o', // key data
-			0x00, 0x02,    // list length
-			0x00, 0x02,    // list element 0 length
-			'h', 'e',      // list element 0 data
-			0x00, 0x02,    // list element 1 length
-			'l', 'o',      // list element 1 data
+	err := envelope_body_append_string_multimap(&buf, m)
+	testing.expectf(t, err == nil, "got error: %v", err)
+	
+	//odinfmt: disable
+	exp1 := []byte{
+		0x00, 0x02, // map length
 
-			0x00, 0x05,              // key length
-			'n', 'a', 'm', 'e', 's', // key data
-			0x00, 0x02,              // list length
-			0x00, 0x05,              // list element 0 length
-			'V', 'i', 'n', 'c', 'e', // list element 0 data
-			0x00, 0x04,              // list element 1 length
-			'J', 'o', 's', 'e',      // list element 1 data
-		}
-		//odinfmt: enable
+		0x00, 0x03,    // key length
+		'f', 'o', 'o', // key data
+		0x00, 0x02,    // list length
+		0x00, 0x02,    // list element 0 length
+		'h', 'e',      // list element 0 data
+		0x00, 0x02,    // list element 1 length
+		'l', 'o',      // list element 1 data
 
-		
-			//odinfmt: disable
-		exp2 := []byte {
-			0x00, 0x02, // map length
-
-			0x00, 0x05,              // key length
-			'n', 'a', 'm', 'e', 's', // key data
-			0x00, 0x02,              // list length
-			0x00, 0x05,              // list element 0 length
-			'V', 'i', 'n', 'c', 'e', // list element 0 data
-			0x00, 0x04,              // list element 1 length
-			'J', 'o', 's', 'e',      // list element 1 data
-
-			0x00, 0x03,     // key length
-			'f', 'o', 'o',  // key data
-			0x00, 0x02,     // list length
-			0x00, 0x02,     // list element 0 length
-			'h', 'e',       // list element 0 data
-			0x00, 0x02,     // list element 1 length
-			'l', 'o',       // list element 1 data
-		}
-		//odinfmt: enable
-
-		check(t, buf[:], exp1, exp2)
+		0x00, 0x05,              // key length
+		'n', 'a', 'm', 'e', 's', // key data
+		0x00, 0x02,              // list length
+		0x00, 0x05,              // list element 0 length
+		'V', 'i', 'n', 'c', 'e', // list element 0 data
+		0x00, 0x04,              // list element 1 length
+		'J', 'o', 's', 'e',      // list element 1 data
 	}
 
+	exp2 := []byte{
+		0x00, 0x02, // map length
+
+		0x00, 0x05,              // key length
+		'n', 'a', 'm', 'e', 's', // key data
+		0x00, 0x02,              // list length
+		0x00, 0x05,              // list element 0 length
+		'V', 'i', 'n', 'c', 'e', // list element 0 data
+		0x00, 0x04,              // list element 1 length
+		'J', 'o', 's', 'e',      // list element 1 data
+
+		0x00, 0x03,     // key length
+		'f', 'o', 'o',  // key data
+		0x00, 0x02,     // list length
+		0x00, 0x02,     // list element 0 length
+		'h', 'e',       // list element 0 data
+		0x00, 0x02,     // list element 1 length
+		'l', 'o',       // list element 1 data
+	}
+	//odinfmt: enable
+
+	check_map(t, buf[:], exp1, exp2)
+}
+
+test_envelope_body_bytes_map :: proc(t: ^testing.T) {
 	// [bytes map]
-	{
-		buf := [dynamic]byte{}
-		defer delete(buf)
 
-		BODY :: distinct []byte
+	buf := [dynamic]byte{}
+	defer delete(buf)
 
-		m := make(map[string]BODY)
-		defer delete(m)
+	BODY :: distinct []byte
 
-		m["foo"] = BODY{0xde, 0xad}
-		m["name"] = BODY{0xbe, 0xef}
+	m := make(map[string]BODY)
+	defer delete(m)
 
-		err := envelope_body_append_bytes_map(&buf, m)
-		testing.expectf(t, err == nil, "got error: %v", err)
-		
-			//odinfmt: disable
-		exp1 := []byte {
-			0x00, 0x02, // map length
+	m["foo"] = BODY{0xde, 0xad}
+	m["name"] = BODY{0xbe, 0xef}
 
-			0x00, 0x03,             // key length
-			'f', 'o', 'o',          // key data
-			0x00, 0x04,             // value length
-			0xde, 0xad, 0xbe, 0xef, // value data
+	err := envelope_body_append_bytes_map(&buf, m)
+	testing.expectf(t, err == nil, "got error: %v", err)
+	
+	//odinfmt: disable
+	exp1 := []byte {
+		0x00, 0x02, // map length
 
-			0x00, 0x04,         // key length
-			'n', 'a', 'm', 'e', // key data
-			0x00, 0x04,         // value length
-			0xbe, 0xef,         // value data
-		}
-		//odinfmt: enable
+		0x00, 0x03,             // key length
+		'f', 'o', 'o',          // key data
+		0x00, 0x04,             // value length
+		0xde, 0xad, 0xbe, 0xef, // value data
 
-		
-			//odinfmt: disable
-		exp2 := []byte {
-			0x00, 0x02, // map length
-
-			0x00, 0x04,         // key length
-			'n', 'a', 'm', 'e', // key data
-			0x00, 0x04,         // value length
-			0xbe, 0xef,         // value data
-
-			0x00, 0x03,             // key length
-			'f', 'o', 'o',          // key data
-			0x00, 0x04,             // value length
-			0xde, 0xad, 0xbe, 0xef, // value data
-		}
-		//odinfmt: enable
-
-		check(t, buf[:], exp1, exp2)
+		0x00, 0x04,         // key length
+		'n', 'a', 'm', 'e', // key data
+		0x00, 0x04,         // value length
+		0xbe, 0xef,         // value data
 	}
+
+	exp2 := []byte {
+		0x00, 0x02, // map length
+
+		0x00, 0x04,         // key length
+		'n', 'a', 'm', 'e', // key data
+		0x00, 0x04,         // value length
+		0xbe, 0xef,         // value data
+
+		0x00, 0x03,             // key length
+		'f', 'o', 'o',          // key data
+		0x00, 0x04,             // value length
+		0xde, 0xad, 0xbe, 0xef, // value data
+	}
+	//odinfmt: enable
+
+	check_map(t, buf[:], exp1, exp2)
 }
 
 expect_equal_slices :: proc(t: ^testing.T, got, exp: $T/[]$E) {
