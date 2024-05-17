@@ -408,23 +408,27 @@ test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
 		err := envelope_body_append_unsigned_vint(&buf, u64(282240))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
-		// err2 := envelope_body_append_unsigned_vint(&buf, u32(282240))
-		// testing.expectf(t, err2 == nil, "got error: %v", err2)
-		//
-		// err3 := envelope_body_append_unsigned_vint(&buf, u16(24450))
-		// testing.expectf(t, err3 == nil, "got error: %v", err3)
+		err2 := envelope_body_append_unsigned_vint(&buf, u32(140022))
+		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
-		expect_equal_slices(t, buf[:], []byte{0x80, 0x9d, 0x11, 0x80, 0x9d, 0x11, 0x82, 0xbf, 0x1})
+		err3 := envelope_body_append_unsigned_vint(&buf, u16(24450))
+		testing.expectf(t, err3 == nil, "got error: %v", err3)
+
+		expect_equal_slices(t, buf[:], []byte{0x80, 0x9d, 0x11, 0xf6, 0xc5, 0x08, 0x82, 0xbf, 0x1})
 	}
 
 	{
-		n: u64 = 0
-		err: Error = {}
-
-		n, _, err = envelope_body_read_unsigned_vint(buf[:])
+		n, new_buf, err := envelope_body_read_unsigned_vint(buf[:])
 		testing.expectf(t, err == nil, "got error: %v", err)
-
 		testing.expect_value(t, n, u64(282240))
+
+		n, new_buf, err = envelope_body_read_unsigned_vint(new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, u64(140022))
+
+		n, new_buf, err = envelope_body_read_unsigned_vint(new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, u64(24450))
 	}
 }
 
