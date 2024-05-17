@@ -475,8 +475,6 @@ envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: 
 	// the remaining chunk that is less than 128. The most significant bit must not be set.
 	tmp_buf[i] = byte(n)
 
-	fmt.printfln("tmp_buf: %b", tmp_buf)
-
 	append(buf, ..tmp_buf[:i + 1]) or_return
 
 	return nil
@@ -485,24 +483,22 @@ envelope_body_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: 
 envelope_body_read_unsigned_vint :: proc(buf: []byte) -> (n: u64, new_buf: []byte, err: Error) {
 	buf := buf
 
-	// loop: for b in buf {
+	shift := u64(0)
+	count := 0
 	for b in buf {
 		tmp := u64(b) & (~u64(0x80))
 
-		n |= tmp
-		fmt.printfln("n1: %x (%032b), tmp: %x (%08b), tmp1: %08b", n, n, tmp, tmp, b)
+		n |= (tmp << shift)
+		count += 1
 
-		// if b & 0x80 == 0x80 {
-		// 	fmt.println("lol")
-		n <<= 7
-		// } else {
-		// 	break loop
-		// }
+		if b & 0x80 == 0 {
+			break
+		}
 
-		fmt.printfln("n2: %x (%032b), tmp: %x (%08b), tmp1: %08b", n, n, tmp, tmp, b)
-
-		fmt.println("---")
+		shift += 7
 	}
+
+	new_buf = buf[count:]
 
 	return
 }
