@@ -285,6 +285,11 @@ message_append_string :: proc(buf: ^[dynamic]byte, str: string) -> (err: Error) 
 message_read_string :: proc(buf: []byte) -> (str: string, new_buf: []byte, err: Error) {
 	n, tmp_buf := message_read_short(buf) or_return
 
+	if len(tmp_buf) < int(n) {
+		err = .Too_Short
+		return
+	}
+
 	str = string(tmp_buf[:n])
 	new_buf = tmp_buf[n:]
 
@@ -635,6 +640,24 @@ message_append_string_multimap :: proc(
 		message_append_string_list(buf, cast([]string)list) or_return
 	}
 	return nil
+}
+
+message_read_string_multimap :: proc(buf: []byte, allocator := context.temp_allocator) -> (res: map[string][]string, err: Error) {
+	n, new_buf := message_read_short(buf) or_return
+
+	res = make(map[string][]string, capacity = n)
+
+	for i in 0 ..< n {
+		key: string
+		value: []string
+
+		key, new_buf = message_read_string(new_buf) or_return
+		value, new_buf = message_read_string_list(buf, allocator = allocator) or_return
+
+		res[key] = value
+	}
+
+	return
 }
 
 message_append_bytes_map :: proc(

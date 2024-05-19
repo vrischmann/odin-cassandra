@@ -604,6 +604,7 @@ check_map :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte, loc :=
 	}
 }
 
+@(test)
 test_message_string_map :: proc(t: ^testing.T) {
 	// [string map]
 
@@ -654,6 +655,7 @@ test_message_string_map :: proc(t: ^testing.T) {
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
 
+@(test)
 test_message_string_multimap :: proc(t: ^testing.T) {
 	// [string multimap]
 
@@ -714,8 +716,24 @@ test_message_string_multimap :: proc(t: ^testing.T) {
 	append(&exp_buf2, "lo") // list element 1 data
 
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
+
+	//
+
+	res, err2 := message_read_string_multimap(buf[:])
+	testing.expectf(t, err2 == nil, "got error: %v", err2)
+	testing.expect_value(t, len(res), 2)
+
+	list, ok := res["foo"]
+	testing.expect(t, ok, "key 'foo' not in map")
+	expect_equal_slices(t, list, []string{"he", "lo"})
+
+	list, ok = res["names"]
+	fmt.println(list)
+	testing.expect(t, ok, "key 'foo' not in map")
+	expect_equal_slices(t, list, []string{"he", "lo"})
 }
 
+@(test)
 test_message_bytes_map :: proc(t: ^testing.T) {
 	// [bytes map]
 
@@ -742,12 +760,12 @@ test_message_bytes_map :: proc(t: ^testing.T) {
 
 	append(&exp_buf1, 0x00, 0x03) // key length
 	append(&exp_buf1, "foo") // key data
-	append(&exp_buf1, 0x00, 0x04) // value length
-	append(&exp_buf1, 0xde, 0xad, 0xbe, 0xef) // value data
+	append(&exp_buf1, 0x00, 0x00, 0x00, 0x02) // value length
+	append(&exp_buf1, 0xde, 0xad) // value data
 
 	append(&exp_buf1, 0x00, 0x04) // key length
 	append(&exp_buf1, "name") // key data
-	append(&exp_buf1, 0x00, 0x04) // value length
+	append(&exp_buf1, 0x00, 0x00, 0x00, 0x02) // value length
 	append(&exp_buf1, 0xbe, 0xef) // value data
 
 	exp_buf2 := [dynamic]byte{}
@@ -757,13 +775,13 @@ test_message_bytes_map :: proc(t: ^testing.T) {
 
 	append(&exp_buf2, 0x00, 0x04) // key length
 	append(&exp_buf2, "name") // key data
-	append(&exp_buf2, 0x00, 0x04) // value length
+	append(&exp_buf2, 0x00, 0x00, 0x00, 0x02) // value length
 	append(&exp_buf2, 0xbe, 0xef) // value data
 
 	append(&exp_buf2, 0x00, 0x03) // key length
 	append(&exp_buf2, "foo") // key data
-	append(&exp_buf2, 0x00, 0x04) // value length
-	append(&exp_buf2, 0xde, 0xad, 0xbe, 0xef) // value data
+	append(&exp_buf2, 0x00, 0x00, 0x00, 0x02) // value length
+	append(&exp_buf2, 0xde, 0xad) // value data
 
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
