@@ -483,7 +483,7 @@ message_append_unsigned_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error)
 message_read_unsigned_vint :: proc($T: typeid, buf: []byte) -> (n: T, new_buf: []byte, err: Error) where intrinsics.type_is_unsigned(T) {
 	buf := buf
 
-	shift := u64(0)
+	shift := T(0)
 	count := 0
 	for b in buf {
 		tmp := T(b) & (~T(0x80))
