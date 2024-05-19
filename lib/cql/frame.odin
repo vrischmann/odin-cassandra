@@ -488,6 +488,8 @@ message_read_unsigned_vint :: proc($T: typeid, buf: []byte) -> (n: T, new_buf: [
 	for b in buf {
 		tmp := T(b) & (~T(0x80))
 
+		// TODO(vincent): runtime check if the number will actually fit in the type T ?
+
 		n |= (tmp << shift)
 		count += 1
 
