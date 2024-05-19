@@ -17,16 +17,13 @@ test_parse_envelope_too_short :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_envelope_error :: proc(t: ^testing.T) {
-	//odinfmt: disable
-	data := [dynamic]byte {
-		0x05,                   // version
-		0x02,                   // flags
-		0x00, 0x01,             // stream
-		u8(Opcode.ERROR),       // opcode
-		0x00, 0x00, 0x00, 0x0B, // length placeholder
-	}
+	data := [dynamic]byte{}
+	append(&data, 0x05) // version
+	append(&data, 0x02) // flags
+	append(&data, 0x00, 0x01) // stream
+	append(&data, u8(Opcode.ERROR)) // opcode
+	append(&data, 0x00, 0x00, 0x00, 0x0B) // length
 	defer delete(data)
-	//odinfmt: enable
 
 	err := envelope_body_append_string(&data, "foobarbaz")
 	testing.expectf(t, err == nil, "got error: %v", err)
@@ -46,19 +43,16 @@ test_parse_envelope_error :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_envelope_startup :: proc(t: ^testing.T) {
-	//odinfmt: disable
-	data := []byte {
-		0x05,                                   // version
-		0x02,                                   // flags
-		0x00, 0x01,                             // stream
-		u8(Opcode.STARTUP),                     // opcode
-		0x00, 0x00, 0x00, 0x08,                 // length
-		'f', 'o', 'o', 'b', 'a', 'r', 'b', 'a', // body
-	}
-	//odinfmt: enable
+	data := [dynamic]byte{}
+	append(&data, 0x05) // version
+	append(&data, 0x02) // flags
+	append(&data, 0x00, 0x01) // stream
+	append(&data, u8(Opcode.STARTUP)) // opcode
+	append(&data, 0x00, 0x00, 0x00, 0x08) // length
+	append(&data, 'f', 'o', 'o', 'b', 'a', 'r', 'b', 'a') // body
+	defer delete(data)
 
-
-	envelope, err := parse_envelope(data)
+	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	testing.expect(t, is_request(&envelope.header))
@@ -71,18 +65,17 @@ test_parse_envelope_startup :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_envelope_invalid_body :: proc(t: ^testing.T) {
-	//odinfmt: disable
-	data := []byte {
-		0x05,                     // version
-		0x02,                     // flags
-		0x00, 0x01,               // stream
-		u8(Opcode.STARTUP),       // opcode
-		0x00, 0x00, 0x00, 0x08,   // length
-		'f', 'o', 'o',            // body is too short
-	}
-	//odinfmt: enable
+	data := [dynamic]byte{}
+	append(&data, 0x05) // version
+	append(&data, 0x02) // flags
+	append(&data, 0x00, 0x01) // stream
+	append(&data, u8(Opcode.STARTUP)) // opcode
+	append(&data, 0x00, 0x00, 0x00, 0x08) // length
+	append(&data, 'f', 'o', 'o') // body is too short
+	defer delete(data)
 
-	envelope, err := parse_envelope(data)
+
+	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err != nil, "got error: %v", err)
 	testing.expect_value(t, err, Envelope_Parse_Error.Invalid_Envelope_Body_Length)
 }
@@ -184,12 +177,10 @@ test_envelope_body_short :: proc(t: ^testing.T) {
 
 	err := envelope_body_append_short(&buf, u16(40000))
 	testing.expectf(t, err == nil, "got error: %v", err)
-
 	expect_equal_slices(t, buf[:], []byte{0x9c, 0x40})
 
 	n, _, err2 := envelope_body_read_short(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-
 	testing.expect_value(t, n, 40000)
 }
 
@@ -200,19 +191,18 @@ test_envelope_body_string :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	append(&exp_buf, 0x00, 0x05)
+	append(&exp_buf, "hello")
+
+	//
+
 	err := envelope_body_append_string(&buf, "hello")
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x00, 0x05,
-		'h', 'e', 'l', 'l', 'o',
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	str, _, err2 := envelope_body_read_string(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-
 	testing.expect_value(t, str, "hello")
 }
 
@@ -223,19 +213,19 @@ test_envelope_body_long_string :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+	append(&exp_buf, 0x00, 0x00, 0x00, 0x05)
+	append(&exp_buf, "hello")
+
+	//
+
 	err := envelope_body_append_long_string(&buf, "hello")
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x00, 0x00, 0x00, 0x05,
-		'h', 'e', 'l', 'l', 'o',
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	str, _, err2 := envelope_body_read_long_string(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-
 	testing.expect_value(t, str, "hello")
 }
 
@@ -246,30 +236,25 @@ test_envelope_body_uuid :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	
-	//odinfmt: disable
-	err := envelope_body_append_uuid(&buf, UUID{
-		0xfd, 0xd8, 0x73, 0xbc,
-		0x14, 0xb5, 0x46, 0x9b,
-		0x94, 0xa0, 0xb8, 0x9b,
-		0xe9, 0x94, 0xb3, 0xf9,
-	})
-	//odinfmt: enable
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+	append(&exp_buf, 0xfd, 0xd8, 0x73, 0xbc)
+	append(&exp_buf, 0x14, 0xb5, 0x46, 0x9b)
+	append(&exp_buf, 0x94, 0xa0, 0xb8, 0x9b)
+	append(&exp_buf, 0xe9, 0x94, 0xb3, 0xf9)
+
+	exp_uuid: UUID = {}
+	copy(exp_uuid[:], exp_buf[:])
+
+	//
+
+	err := envelope_body_append_uuid(&buf, exp_uuid)
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0xfd, 0xd8, 0x73, 0xbc,
-		0x14, 0xb5, 0x46, 0x9b,
-		0x94, 0xa0, 0xb8, 0x9b, 0xe9,
-		0x94, 0xb3, 0xf9,
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	uuid, _, err2 := envelope_body_read_uuid(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-
-	expect_equal_slices(t, uuid[:], buf[:])
+	testing.expect_value(t, uuid, exp_uuid)
 }
 
 @(test)
@@ -281,16 +266,19 @@ test_envelope_body_string_list :: proc(t: ^testing.T) {
 
 	exp := []string{"foo", "bar"}
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+	append(&exp_buf, 0x00, 0x02)
+	append(&exp_buf, 0x00, 0x03)
+	append(&exp_buf, "foo")
+	append(&exp_buf, 0x00, 0x03)
+	append(&exp_buf, "bar")
+
+	//
+
 	err := envelope_body_append_string_list(&buf, exp)
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x00, 0x02,
-		0x00, 0x03, 'f', 'o', 'o',
-		0x00, 0x03, 'b', 'a', 'r',
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	list, _, err2 := envelope_body_read_string_list(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
@@ -307,10 +295,15 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 
 		exp := []byte{0xde, 0xad, 0xbe, 0xef}
 
+		exp_buf := [dynamic]byte{}
+		append(&exp_buf, 0x00, 0x00, 0x00, 0x04)
+		append(&exp_buf, 0xde, 0xad, 0xbe, 0xef)
+
+		//
+
 		err := envelope_body_append_bytes(&buf, exp)
 		testing.expectf(t, err == nil, "got error: %v", err)
-
-		expect_equal_slices(t, buf[:], []byte{0x00, 0x00, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef})
+		expect_equal_slices(t, buf[:], exp_buf[:])
 
 		bytes, _, err2 := envelope_body_read_bytes(buf[:])
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
@@ -323,9 +316,10 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 		buf := [dynamic]byte{}
 		defer delete(buf)
 
+		//
+
 		err := envelope_body_append_null_bytes(&buf)
 		testing.expectf(t, err == nil, "got error: %v", err)
-
 		expect_equal_slices(t, buf[:], []byte{0xff, 0xff, 0xff, 0xff})
 
 		bytes, _, err2 := envelope_body_read_bytes(buf[:])
@@ -336,23 +330,22 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 
 @(test)
 test_envelope_body_value :: proc(t: ^testing.T) {
-	// TODO(vincent): enable this once the compiler is fixed
-	//
 	// [value] - with data
-	// {
-	// 	buf := [dynamic]byte{}
-	// 	defer delete(buf)
-	//
-	// 	err := envelope_body_append_value(&buf, Data_Value([]byte{
-	// 		0xde, 0xad, 0xbe, 0xef,
-	// 	}))
-	// 	testing.expectf(t, err == nil, "got error: %v", err)
-	//
-	// 	// expect_equal_slices(t, buf[:], []byte{
-	// 	// 	0x00, 0x00, 0x00, 0x04,
-	// 	// 	0xde, 0xad, 0xbe, 0xef,
-	// 	// })
-	// }
+	{
+		buf := [dynamic]byte{}
+		defer delete(buf)
+
+		exp_buf := [dynamic]byte{}
+		defer delete(exp_buf)
+
+		append(&exp_buf, 0x00, 0x00, 0x00, 0x04)
+		append(&exp_buf, 0xde, 0xad, 0xbe, 0xef)
+
+		err := envelope_body_append_value(&buf, Data_Value([]byte{0xde, 0xad, 0xbe, 0xef}))
+		testing.expectf(t, err == nil, "got error: %v", err)
+
+		expect_equal_slices(t, buf[:], exp_buf[:])
+	}
 
 	// [value] - null
 	{
@@ -398,19 +391,20 @@ test_envelope_body_short_bytes :: proc(t: ^testing.T) {
 
 	exp := []byte{0xde, 0xad, 0xbe, 0xef}
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+
+	append(&exp_buf, 0x00, 0x04)
+	append(&exp_buf, 0xde, 0xad, 0xbe, 0xef)
+
+	//
+
 	err := envelope_body_append_short_bytes(&buf, exp)
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x00, 0x04,
-		0xde, 0xad, 0xbe, 0xef,
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	bytes, _, err2 := envelope_body_read_short_bytes(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-
 	expect_equal_slices(t, bytes, exp)
 }
 
@@ -421,6 +415,15 @@ test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+
+	append(&exp_buf, 0x80, 0x9d, 0x11)
+	append(&exp_buf, 0xf6, 0xc5, 0x08)
+	append(&exp_buf, 0x82, 0xbf, 0x1)
+
+	//
+
 	err := envelope_body_append_unsigned_vint(&buf, u64(282240))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
@@ -429,14 +432,8 @@ test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
 
 	err3 := envelope_body_append_unsigned_vint(&buf, u16(24450))
 	testing.expectf(t, err3 == nil, "got error: %v", err3)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x80, 0x9d, 0x11,
-		0xf6, 0xc5, 0x08,
-		0x82, 0xbf, 0x1,
-	})
-	//odinfmt: enable
+
+	expect_equal_slices(t, buf[:], exp_buf[:])
 
 	n, new_buf, err4 := envelope_body_read_unsigned_vint(buf[:])
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
@@ -458,6 +455,16 @@ test_envelope_body_vint :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+
+	append(&exp_buf, 0x80, 0xba, 0x22) // 2822240
+	append(&exp_buf, 0xbf, 0x25) // -2400
+	append(&exp_buf, 0xdf, 0xd1, 0x04) // -38000
+	append(&exp_buf, 0x80, 0xd0, 0xa5, 0x4c) // 80000000
+
+	//
+
 	err := envelope_body_append_vint(&buf, i64(282240))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
@@ -469,15 +476,8 @@ test_envelope_body_vint :: proc(t: ^testing.T) {
 
 	err4 := envelope_body_append_vint(&buf, i32(80000000))
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
-	
-	//odinfmt: disable
-	expect_equal_slices( t, buf[:], []byte{
-		0x80, 0xba, 0x22,        // 2822240
-		0xbf, 0x25,              // -2400
-		0xdf, 0xd1, 0x04,        // -38000
-		0x80, 0xd0, 0xa5, 0x4c, // 80000000
-	})
-	//odinfmt: enable
+
+	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
@@ -487,25 +487,29 @@ test_envelope_body_inet :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+
+	append(&exp_buf, 0x04) // address size
+	append(&exp_buf, 192, 168, 1, 1) // address bytes
+	append(&exp_buf, 0x00, 0x00, 0x5d, 0xc0) // port
+
+	append(&exp_buf, 0x10) // address size
+	append(&exp_buf, 0xfe, 0x80, 0x00, 0x00) // address
+	append(&exp_buf, 0x00, 0x03, 0x00, 0x03)
+	append(&exp_buf, 0x00, 0x02, 0x00, 0x02)
+	append(&exp_buf, 0x00, 0x01, 0x00, 0x01)
+	append(&exp_buf, 0x00, 0x00, 0x5d, 0xc0) // port
+
+	//
+
 	err := envelope_body_append_inet(&buf, net.IP4_Address{192, 168, 1, 1}, i32(24000))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	err2 := envelope_body_append_inet(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001}, i32(24000))
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x04,                    // address size
-		192, 168, 1, 1,          // address bytes
-		0x00, 0x00, 0x5d, 0xc0,  // port
-		0x10,                    // address size
-		0xfe, 0x80, 0x00, 0x00,  // address
-		0x00, 0x03, 0x00, 0x03,
-		0x00, 0x02, 0x00, 0x02,
-		0x00, 0x01, 0x00, 0x01,
-		0x00, 0x00, 0x5d, 0xc0,  // port
-	})
-	//odinfmt: enable
+
+	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
@@ -515,24 +519,27 @@ test_envelope_body_inetaddr :: proc(t: ^testing.T) {
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
+	exp_buf := [dynamic]byte{}
+	defer delete(exp_buf)
+
+	append(&exp_buf, 0x04) // address size
+	append(&exp_buf, 192, 168, 1, 1) // address bytes
+
+	append(&exp_buf, 0x10) // address size
+	append(&exp_buf, 0xfe, 0x80, 0x00, 0x00) // address
+	append(&exp_buf, 0x00, 0x03, 0x00, 0x03)
+	append(&exp_buf, 0x00, 0x02, 0x00, 0x02)
+	append(&exp_buf, 0x00, 0x01, 0x00, 0x01)
+
+	//
+
 	err := envelope_body_append_inetaddr(&buf, net.IP4_Address{192, 168, 1, 1})
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	err2 := envelope_body_append_inetaddr(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001})
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
-	
-	//odinfmt: disable
-	expect_equal_slices(t, buf[:], []byte{
-		0x04,                   // address size
-		192, 168, 1, 1,         // address bytes
 
-		0x10,                   // address size
-		0xfe, 0x80, 0x00, 0x00, // address
-		0x00, 0x03, 0x00, 0x03,
-		0x00, 0x02, 0x00, 0x02,
-		0x00, 0x01, 0x00, 0x01,
-	})
-	//odinfmt: enable
+	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
