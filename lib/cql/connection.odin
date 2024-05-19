@@ -45,7 +45,6 @@ Connection :: struct {
 	read_timeout:             time.Duration,
 	write_timeout:            time.Duration,
 
-
 	// These fields are created and managed by the connection itself
 	connection_attempt_start: time.Time,
 
@@ -407,4 +406,13 @@ write_OPTIONS_message :: proc(conn: ^Connection) -> (err: Error) {
 	envelope_append(&conn.buf, options_hdr, nil) or_return
 
 	return nil
+}
+
+
+@(private)
+read_SUPPORTED_message :: proc(buf: []byte) -> (res: map[string][]string, err: Error) {
+	// TODO(vincent): think about allocations
+	res = make(map[string][]string)
+
+	return
 }
