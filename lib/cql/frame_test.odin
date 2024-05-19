@@ -653,6 +653,20 @@ test_message_string_map :: proc(t: ^testing.T) {
 	append(&exp_buf2, "bar") // value data
 
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
+
+	//
+
+	res, err2 := message_read_string_map(buf[:])
+	testing.expectf(t, err2 == nil, "got error: %v", err2)
+	testing.expect_value(t, len(res), 2)
+
+	v, ok := res["foo"]
+	testing.expect(t, ok, "key 'foo' not in map")
+	testing.expect_value(t, v, "bar")
+
+	v, ok = res["name"]
+	testing.expect(t, ok, "key 'name' not in map")
+	testing.expect_value(t, v, "Vincent")
 }
 
 @(test)
@@ -728,8 +742,7 @@ test_message_string_multimap :: proc(t: ^testing.T) {
 	expect_equal_slices(t, list, []string{"he", "lo"})
 
 	list, ok = res["names"]
-	fmt.println(list)
-	testing.expect(t, ok, "key 'foo' not in map")
+	testing.expect(t, ok, "key 'names' not in map")
 	expect_equal_slices(t, list, []string{"Vince", "Jose"})
 }
 
