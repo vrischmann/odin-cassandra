@@ -263,34 +263,6 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 }
 
 @(private)
-handle_read_in_handshake :: proc(conn: ^Connection, data: []byte) -> (err: Error) {
-	envelope := parse_envelope(data) or_return
-
-
-	#partial switch conn.handshake_stage {
-	case .Write_OPTIONS:
-		if envelope.header.opcode != Opcode.SUPPORTED {
-			log.errorf("expected a SUPPORTED message, got %v", envelope.header.opcode)
-			return .Invalid_Response
-		}
-
-		fmt.printf("envelope: %v", envelope)
-
-	case .Write_STARTUP:
-		unimplemented("Write_STARTUP")
-
-	case .Write_AUTH_RESPONSE:
-		unimplemented("Write_AUTH_RESPONSE")
-
-	case:
-		log.errorf("invalid stage %v while reading data", conn.handshake_stage)
-		return .Invalid_Handshake_Stage
-	}
-
-	return nil
-}
-
-@(private)
 handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 	log.infof("%v", cqe)
 
@@ -364,6 +336,43 @@ handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> E
 }
 
 @(private)
+handle_write_options :: proc(conn: ^Connection, envelope: Envelope) -> (err: Error) {
+	if envelope.header.opcode != Opcode.SUPPORTED {
+		log.errorf("expected a SUPPORTED message, got %v", envelope.header.opcode)
+		return .Invalid_Response
+	}
+
+	msg, _ := read_SUPPORTED_message(envelope.body) or_return
+
+	fmt.printfln("supported: %v", msg)
+
+	return nil
+}
+
+@(private)
+handle_read_in_handshake :: proc(conn: ^Connection, data: []byte) -> (err: Error) {
+	envelope := parse_envelope(data) or_return
+
+
+	#partial switch conn.handshake_stage {
+	case .Write_OPTIONS:
+		handle_write_options(conn, envelope) or_return
+	case .Write_STARTUP:
+		unimplemented("Write_STARTUP")
+
+	case .Write_AUTH_RESPONSE:
+		unimplemented("Write_AUTH_RESPONSE")
+
+	case:
+		log.errorf("invalid stage %v while reading data", conn.handshake_stage)
+		return .Invalid_Handshake_Stage
+	}
+
+	return nil
+}
+
+
+@(private)
 prep_connect_with_timeout :: proc(conn: ^Connection, timeout: time.Duration) {
 	log.infof("socket: %v, sockaddr: %v", conn.socket, conn.sockaddr)
 
@@ -408,11 +417,16 @@ write_OPTIONS_message :: proc(conn: ^Connection) -> (err: Error) {
 	return nil
 }
 
+@(private)
+SUPPORTED :: struct {
+	options: map[string][]string,
+}
 
 @(private)
-read_SUPPORTED_message :: proc(buf: []byte) -> (res: map[string][]string, err: Error) {
+read_SUPPORTED_message :: proc(body: EnvelopeBody, allocator := context.temp_allocator) -> (res: SUPPORTED, new_buf: []byte, err: Error) {
 	// TODO(vincent): think about allocations
-	res = make(map[string][]string)
+
+	res.options, new_buf = message_read_string_multimap(transmute([]byte)body, allocator = allocator) or_return
 
 	return
 }

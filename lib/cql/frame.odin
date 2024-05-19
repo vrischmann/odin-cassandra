@@ -626,8 +626,16 @@ message_append_string_map :: proc(
 	return nil
 }
 
-message_read_string_map :: proc(buf: []byte, allocator := context.temp_allocator) -> (res: map[string]string, err: Error) {
-	n, new_buf := message_read_short(buf) or_return
+message_read_string_map :: proc(
+	buf: []byte,
+	allocator := context.temp_allocator,
+) -> (
+	res: map[string]string,
+	new_buf: []byte,
+	err: Error,
+) {
+	n: u16
+	n, new_buf = message_read_short(buf) or_return
 
 	res = make(map[string]string, capacity = n)
 
@@ -660,8 +668,16 @@ message_append_string_multimap :: proc(
 	return nil
 }
 
-message_read_string_multimap :: proc(buf: []byte, allocator := context.temp_allocator) -> (res: map[string][]string, err: Error) {
-	n, new_buf := message_read_short(buf) or_return
+message_read_string_multimap :: proc(
+	buf: []byte,
+	allocator := context.temp_allocator,
+) -> (
+	res: map[string][]string,
+	new_buf: []byte,
+	err: Error,
+) {
+	n: u16
+	n, new_buf = message_read_short(buf) or_return
 
 	res = make(map[string][]string, capacity = n)
 
