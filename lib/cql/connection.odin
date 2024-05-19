@@ -21,8 +21,21 @@ Connection_Stage :: enum {
 	Graceful_Shutdown,
 }
 
+Handshake_Stage :: enum {
+	Invalid = 0,
+	Write_STARTUP,
+	Write_AUTH_RESPONSE,
+	Write_OPTIONS,
+	Read_SUPPORTED,
+	Read_READY,
+	Read_AUTHENTICATE,
+	Read_AUTH_CHALLENGE,
+	Read_AUTH_SUCCESS,
+	Done,
+}
+
 Connection :: struct {
-	// These fields are mandatory and must be provided by the caller either in [init_connection] or [connect_endpoint]
+	// These fields are mandatory and must be provided by the caller either in [connection_init]
 	ring:                     ^mio.ring,
 	id:                       Connection_Id,
 	endpoint:                 net.Endpoint,
@@ -39,7 +52,6 @@ Connection :: struct {
 	// Set to true when the connection has closed its socket
 	// TODO(vincent): maybe don't do this ?
 	closed:                   bool,
-	framing_enabled:          bool,
 
 	// Low level stuff used to drive io_uring
 	socket:                   os.Socket,
@@ -50,6 +62,9 @@ Connection :: struct {
 
 	// TODO(vincent): handle multiple streams
 	stream:                   u16,
+
+	// Protocol negotiation
+	handshake_stage:          Handshake_Stage,
 }
 
 connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Error) {
@@ -123,7 +138,9 @@ Processing_Result :: enum {
 @(private)
 Process_Error :: enum {
 	None = 0,
-	Invalid_Stage,
+	Invalid_Connection_Stage,
+	Invalid_Handshake_Stage,
+	Invalid_Response,
 }
 
 process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processing_Result, err: Error) {
@@ -148,7 +165,7 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 		return .Shutdown, nil
 	case:
 		log.errorf("stage is %q", conn.stage)
-		return .Invalid, .Invalid_Stage
+		return .Invalid, .Invalid_Connection_Stage
 	}
 }
 
@@ -185,20 +202,8 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error
 		}
 	}
 
-	log.infof("socket: %v, sockaddr: %v", conn.socket, conn.sockaddr)
-
 	conn.connection_attempt_start = time.now()
-
-	sqe := mio.ring_connect(conn.ring, conn.socket, &conn.sockaddr)
-	sqe.flags |= mio.IOSQE_IO_LINK
-	sqe.user_data = u64(uintptr(conn))
-
-	conn.timeout = {}
-	conn.timeout.tv_nsec = i64(1 * time.Second)
-
-	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
-	timeout_sqe.user_data = 20
-
+	prep_connect_with_timeout(conn, conn.connect_timeout)
 
 	return nil
 }
@@ -212,32 +217,12 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 	}
 
 	// Connection is established, now start the handshake with the server
-	//
-	// First step is a OPTIONS envelope _unframed_
+	conn.handshake_stage = .Write_OPTIONS
+	clear(&conn.buf)
+	write_OPTIONS_message(conn) or_return
 
 	conn.stage = .Write_Frame
-
-	options_hdr: EnvelopeHeader = {}
-	options_hdr.version = .V5
-	options_hdr.flags = 0
-	options_hdr.stream = conn.stream
-	options_hdr.opcode = .OPTIONS
-	options_hdr.length = 0
-
-	clear(&conn.buf)
-	envelope_append(&conn.buf, options_hdr, nil)
-
-	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
-
-	sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
-	sqe.flags |= mio.IOSQE_IO_LINK
-	sqe.user_data = u64(uintptr(conn))
-
-	conn.timeout = {}
-	conn.timeout.tv_nsec = i64(1 * time.Second)
-
-	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
-	timeout_sqe.user_data = 20
+	prep_write_with_timeout(conn, conn.write_timeout)
 
 	return nil
 }
@@ -279,7 +264,35 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 }
 
 @(private)
-handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
+handle_read_in_handshake :: proc(conn: ^Connection, data: []byte) -> (err: Error) {
+	envelope := parse_envelope(data) or_return
+
+
+	#partial switch conn.handshake_stage {
+	case .Write_OPTIONS:
+		if envelope.header.opcode != Opcode.SUPPORTED {
+			log.errorf("expected a SUPPORTED message, got %v", envelope.header.opcode)
+			return .Invalid_Response
+		}
+
+		fmt.printf("envelope: %v", envelope)
+
+	case .Write_STARTUP:
+		unimplemented("Write_STARTUP")
+
+	case .Write_AUTH_RESPONSE:
+		unimplemented("Write_AUTH_RESPONSE")
+
+	case:
+		log.errorf("invalid stage %v while reading data", conn.handshake_stage)
+		return .Invalid_Handshake_Stage
+	}
+
+	return nil
+}
+
+@(private)
+handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 	log.infof("%v", cqe)
 
 	if cqe.res < 0 {
@@ -297,17 +310,11 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 	read_data := conn.buf[0:n]
 	log.infof("read data: %q", string(read_data))
 
-	if conn.framing_enabled {
-		unimplemented("not implemented")
-	} else {
-		envelope := parse_envelope(read_data) or_return
-
-		#partial switch envelope.header.opcode {
-		case .SUPPORTED:
-
-		}
-
-		fmt.printf("envelope: %v", envelope)
+	#partial switch conn.handshake_stage {
+	case .Done:
+		unimplemented("framing not implemented yet")
+	case:
+		handle_read_in_handshake(conn, read_data) or_return
 	}
 
 	clear(&conn.buf)
@@ -353,6 +360,51 @@ handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> E
 		err := mio.os_err_from_errno(-cqe.res)
 		log.warnf("unable to close socket %v, err: %v", conn.socket, err)
 	}
+
+	return nil
+}
+
+@(private)
+prep_connect_with_timeout :: proc(conn: ^Connection, timeout: time.Duration) {
+	log.infof("socket: %v, sockaddr: %v", conn.socket, conn.sockaddr)
+
+	sqe := mio.ring_connect(conn.ring, conn.socket, &conn.sockaddr)
+	sqe.flags |= mio.IOSQE_IO_LINK
+	sqe.user_data = u64(uintptr(conn))
+
+	conn.timeout = {}
+	conn.timeout.tv_nsec = i64(1 * time.Second)
+
+	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
+	timeout_sqe.user_data = 20
+
+}
+
+@(private)
+prep_write_with_timeout :: proc(conn: ^Connection, timeout: time.Duration) {
+	log.infof("prep writing to socket fd=%d len=%v data=%q", conn.socket, len(conn.buf), conn.buf)
+
+	sqe := mio.ring_write(conn.ring, os.Handle(conn.socket), conn.buf[:], 0)
+	sqe.flags |= mio.IOSQE_IO_LINK
+	sqe.user_data = u64(uintptr(conn))
+
+	conn.timeout = {}
+	conn.timeout.tv_nsec = i64(timeout)
+
+	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
+	timeout_sqe.user_data = 20
+}
+
+@(private)
+write_OPTIONS_message :: proc(conn: ^Connection) -> (err: Error) {
+	options_hdr: EnvelopeHeader = {}
+	options_hdr.version = .V5
+	options_hdr.flags = 0
+	options_hdr.stream = conn.stream
+	options_hdr.opcode = .OPTIONS
+	options_hdr.length = 0
+
+	envelope_append(&conn.buf, options_hdr, nil) or_return
 
 	return nil
 }
