@@ -652,7 +652,7 @@ message_read_string_multimap :: proc(buf: []byte, allocator := context.temp_allo
 		value: []string
 
 		key, new_buf = message_read_string(new_buf) or_return
-		value, new_buf = message_read_string_list(buf, allocator = allocator) or_return
+		value, new_buf = message_read_string_list(new_buf, allocator = allocator) or_return
 
 		res[key] = value
 	}

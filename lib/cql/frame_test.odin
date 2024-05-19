@@ -730,7 +730,7 @@ test_message_string_multimap :: proc(t: ^testing.T) {
 	list, ok = res["names"]
 	fmt.println(list)
 	testing.expect(t, ok, "key 'foo' not in map")
-	expect_equal_slices(t, list, []string{"he", "lo"})
+	expect_equal_slices(t, list, []string{"Vince", "Jose"})
 }
 
 @(test)
