@@ -440,17 +440,28 @@ test_message_unsigned_vint :: proc(t: ^testing.T) {
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	n, new_buf, err4 := message_read_unsigned_vint(buf[:])
-	testing.expectf(t, err4 == nil, "got error: %v", err4)
-	testing.expect_value(t, n, u64(282240))
+	new_buf: []byte
 
-	n, new_buf, err4 = message_read_unsigned_vint(new_buf)
-	testing.expectf(t, err4 == nil, "got error: %v", err4)
-	testing.expect_value(t, n, u64(140022))
+	{
+		n: u64
+		n, new_buf, err = message_read_unsigned_vint(u64, buf[:])
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, u64(282240))
+	}
 
-	n, new_buf, err4 = message_read_unsigned_vint(new_buf)
-	testing.expectf(t, err4 == nil, "got error: %v", err4)
-	testing.expect_value(t, n, u64(24450))
+	{
+		n: u32
+		n, new_buf, err = message_read_unsigned_vint(u32, new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, u32(140022))
+	}
+
+	{
+		n: u16
+		n, new_buf, err = message_read_unsigned_vint(u16, new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, u16(24450))
+	}
 }
 
 @(test)
