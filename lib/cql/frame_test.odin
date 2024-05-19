@@ -494,6 +494,30 @@ test_message_vint :: proc(t: ^testing.T) {
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
+
+	new_buf: []byte
+
+	{
+		n: i64
+		n, new_buf, err = message_read_vint(type_of(n), buf[:])
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, i64(282240))
+
+		n, new_buf, err = message_read_vint(type_of(n), new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, i64(-2400))
+	}
+
+	{
+		n: i32
+		n, new_buf, err = message_read_vint(type_of(n), new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, i32(-38000))
+
+		n, new_buf, err = message_read_vint(type_of(n), new_buf)
+		testing.expectf(t, err == nil, "got error: %v", err)
+		testing.expect_value(t, n, i32(80000000))
+	}
 }
 
 @(test)

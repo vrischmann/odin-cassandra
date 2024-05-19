@@ -521,6 +521,28 @@ message_append_vint :: proc(buf: ^[dynamic]byte, n: $N) -> (err: Error) where ty
 	return nil
 }
 
+message_read_vint :: proc($T: typeid, buf: []byte) -> (n: T, new_buf: []byte, err: Error) where T == i32 || T == i64 {
+	buf := buf
+
+	when type_of(n) == i32 {
+		tmp: u32
+		tmp, new_buf = message_read_unsigned_vint(type_of(tmp), buf) or_return
+
+		n = i32(tmp >> 1) ~ -i32(tmp & 1)
+
+		return
+	}
+
+	when type_of(n) == i64 {
+		tmp: u64
+		tmp, new_buf = message_read_unsigned_vint(type_of(tmp), buf) or_return
+
+		n = i64(tmp >> 1) ~ -i64(tmp & 1)
+	}
+
+	return
+}
+
 // Options
 // TODO(vincent): implement options
 
