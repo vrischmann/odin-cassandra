@@ -633,50 +633,52 @@ test_envelope_body_string_multimap :: proc(t: ^testing.T) {
 
 	err := envelope_body_append_string_multimap(&buf, m)
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	exp1 := []byte{
-		0x00, 0x02, // map length
 
-		0x00, 0x03,    // key length
-		'f', 'o', 'o', // key data
-		0x00, 0x02,    // list length
-		0x00, 0x02,    // list element 0 length
-		'h', 'e',      // list element 0 data
-		0x00, 0x02,    // list element 1 length
-		'l', 'o',      // list element 1 data
+	//
 
-		0x00, 0x05,              // key length
-		'n', 'a', 'm', 'e', 's', // key data
-		0x00, 0x02,              // list length
-		0x00, 0x05,              // list element 0 length
-		'V', 'i', 'n', 'c', 'e', // list element 0 data
-		0x00, 0x04,              // list element 1 length
-		'J', 'o', 's', 'e',      // list element 1 data
-	}
+	exp_buf1 := [dynamic]byte{}
+	defer delete(exp_buf1)
 
-	exp2 := []byte{
-		0x00, 0x02, // map length
+	append(&exp_buf1, 0x00, 0x02) // map length
 
-		0x00, 0x05,              // key length
-		'n', 'a', 'm', 'e', 's', // key data
-		0x00, 0x02,              // list length
-		0x00, 0x05,              // list element 0 length
-		'V', 'i', 'n', 'c', 'e', // list element 0 data
-		0x00, 0x04,              // list element 1 length
-		'J', 'o', 's', 'e',      // list element 1 data
+	append(&exp_buf1, 0x00, 0x03) // key length
+	append(&exp_buf1, "foo") // key data
+	append(&exp_buf1, 0x00, 0x02) // list length
+	append(&exp_buf1, 0x00, 0x02) // list element 0 length
+	append(&exp_buf1, "he") // list element 0 data
+	append(&exp_buf1, 0x00, 0x02) // list element 1 length
+	append(&exp_buf1, "lo") // list element 1 data
 
-		0x00, 0x03,     // key length
-		'f', 'o', 'o',  // key data
-		0x00, 0x02,     // list length
-		0x00, 0x02,     // list element 0 length
-		'h', 'e',       // list element 0 data
-		0x00, 0x02,     // list element 1 length
-		'l', 'o',       // list element 1 data
-	}
-	//odinfmt: enable
+	append(&exp_buf1, 0x00, 0x05) // key length
+	append(&exp_buf1, "names") // key data
+	append(&exp_buf1, 0x00, 0x02) // list length
+	append(&exp_buf1, 0x00, 0x05) // list element 0 length
+	append(&exp_buf1, "Vince") // list element 0 data
+	append(&exp_buf1, 0x00, 0x04) // list element 1 length
+	append(&exp_buf1, "Jose") // list element 1 data
 
-	check_map(t, buf[:], exp1, exp2)
+	exp_buf2 := [dynamic]byte{}
+	defer delete(exp_buf2)
+
+	append(&exp_buf2, 0x00, 0x02) // map length
+
+	append(&exp_buf2, 0x00, 0x05) // key length
+	append(&exp_buf2, "names") // key data
+	append(&exp_buf2, 0x00, 0x02) // list length
+	append(&exp_buf2, 0x00, 0x05) // list element 0 length
+	append(&exp_buf2, "Vince") // list element 0 data
+	append(&exp_buf2, 0x00, 0x04) // list element 1 length
+	append(&exp_buf2, "Jose") // list element 1 data
+
+	append(&exp_buf2, 0x00, 0x03) // key length
+	append(&exp_buf2, "foo") // key data
+	append(&exp_buf2, 0x00, 0x02) // list length
+	append(&exp_buf2, 0x00, 0x02) // list element 0 length
+	append(&exp_buf2, "he") // list element 0 data
+	append(&exp_buf2, 0x00, 0x02) // list element 1 length
+	append(&exp_buf2, "lo") // list element 1 data
+
+	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
 
 test_envelope_body_bytes_map :: proc(t: ^testing.T) {
@@ -695,38 +697,40 @@ test_envelope_body_bytes_map :: proc(t: ^testing.T) {
 
 	err := envelope_body_append_bytes_map(&buf, m)
 	testing.expectf(t, err == nil, "got error: %v", err)
-	
-	//odinfmt: disable
-	exp1 := []byte {
-		0x00, 0x02, // map length
 
-		0x00, 0x03,             // key length
-		'f', 'o', 'o',          // key data
-		0x00, 0x04,             // value length
-		0xde, 0xad, 0xbe, 0xef, // value data
+	//
 
-		0x00, 0x04,         // key length
-		'n', 'a', 'm', 'e', // key data
-		0x00, 0x04,         // value length
-		0xbe, 0xef,         // value data
-	}
+	exp_buf1 := [dynamic]byte{}
+	defer delete(exp_buf1)
 
-	exp2 := []byte {
-		0x00, 0x02, // map length
+	append(&exp_buf1, 0x00, 0x02) // map length
 
-		0x00, 0x04,         // key length
-		'n', 'a', 'm', 'e', // key data
-		0x00, 0x04,         // value length
-		0xbe, 0xef,         // value data
+	append(&exp_buf1, 0x00, 0x03) // key length
+	append(&exp_buf1, "foo") // key data
+	append(&exp_buf1, 0x00, 0x04) // value length
+	append(&exp_buf1, 0xde, 0xad, 0xbe, 0xef) // value data
 
-		0x00, 0x03,             // key length
-		'f', 'o', 'o',          // key data
-		0x00, 0x04,             // value length
-		0xde, 0xad, 0xbe, 0xef, // value data
-	}
-	//odinfmt: enable
+	append(&exp_buf1, 0x00, 0x04) // key length
+	append(&exp_buf1, "name") // key data
+	append(&exp_buf1, 0x00, 0x04) // value length
+	append(&exp_buf1, 0xbe, 0xef) // value data
 
-	check_map(t, buf[:], exp1, exp2)
+	exp_buf2 := [dynamic]byte{}
+	defer delete(exp_buf2)
+
+	append(&exp_buf2, 0x00, 0x02) // map length
+
+	append(&exp_buf2, 0x00, 0x04) // key length
+	append(&exp_buf2, "name") // key data
+	append(&exp_buf2, 0x00, 0x04) // value length
+	append(&exp_buf2, 0xbe, 0xef) // value data
+
+	append(&exp_buf2, 0x00, 0x03) // key length
+	append(&exp_buf2, "foo") // key data
+	append(&exp_buf2, 0x00, 0x04) // value length
+	append(&exp_buf2, 0xde, 0xad, 0xbe, 0xef) // value data
+
+	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
 
 expect_equal_slices :: proc(t: ^testing.T, got, exp: $T/[]$E) {
