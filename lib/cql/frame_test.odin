@@ -25,7 +25,7 @@ test_parse_envelope_error :: proc(t: ^testing.T) {
 	append(&data, 0x00, 0x00, 0x00, 0x0B) // length
 	defer delete(data)
 
-	err := envelope_body_append_string(&data, "foobarbaz")
+	err := message_append_string(&data, "foobarbaz")
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	//
@@ -77,7 +77,7 @@ test_parse_envelope_invalid_body :: proc(t: ^testing.T) {
 
 	envelope, err := parse_envelope(data[:])
 	testing.expectf(t, err != nil, "got error: %v", err)
-	testing.expect_value(t, err, Envelope_Parse_Error.Invalid_Envelope_Body_Length)
+	testing.expect_value(t, err, Envelope_Parse_Error.Invalid_Message_Length)
 }
 
 @(test)
@@ -92,7 +92,7 @@ test_envelope_append :: proc(t: ^testing.T) {
 		options["CQL_VERSION"] = "3.0.0"
 		options["DRIVER_NAME"] = "odin-cassandra"
 
-		err := envelope_body_append_string_map(&body, options)
+		err := message_append_string_map(&body, options)
 		testing.expectf(t, err == nil, "got error: %v", err)
 	}
 
@@ -113,36 +113,36 @@ test_envelope_append :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_envelope_body_int :: proc(t: ^testing.T) {
+test_message_int :: proc(t: ^testing.T) {
 	// [int]
 
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	err := envelope_body_append_int(&buf, i32(495920))
+	err := message_append_int(&buf, i32(495920))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	expect_equal_slices(t, buf[:], []byte{0x00, 0x07, 0x91, 0x30})
 
-	n, _, err2 := envelope_body_read_int(buf[:])
+	n, _, err2 := message_read_int(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	testing.expect_value(t, n, 495920)
 }
 
 @(test)
-test_envelope_body_long :: proc(t: ^testing.T) {
+test_message_long :: proc(t: ^testing.T) {
 	// [long]
 
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	err := envelope_body_append_long(&buf, i64(4095832250025))
+	err := message_append_long(&buf, i64(4095832250025))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	expect_equal_slices(t, buf[:], []byte{0x00, 0x00, 0x03, 0xb9, 0xa2, 0xa0, 0x56, 0xa9})
 
-	n, _, err2 := envelope_body_read_long(buf[:])
+	n, _, err2 := message_read_long(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	testing.expect_value(t, n, 4095832250025)
@@ -150,18 +150,18 @@ test_envelope_body_long :: proc(t: ^testing.T) {
 
 
 @(test)
-test_envelope_body_byte :: proc(t: ^testing.T) {
+test_message_byte :: proc(t: ^testing.T) {
 	// [byte]
 
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	err := envelope_body_append_byte(&buf, u8(40))
+	err := message_append_byte(&buf, u8(40))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	expect_equal_slices(t, buf[:], []byte{0x28})
 
-	n, _, err2 := envelope_body_read_byte(buf[:])
+	n, _, err2 := message_read_byte(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	testing.expect_value(t, n, 40)
@@ -169,23 +169,23 @@ test_envelope_body_byte :: proc(t: ^testing.T) {
 
 
 @(test)
-test_envelope_body_short :: proc(t: ^testing.T) {
+test_message_short :: proc(t: ^testing.T) {
 	// [short]
 
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	err := envelope_body_append_short(&buf, u16(40000))
+	err := message_append_short(&buf, u16(40000))
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], []byte{0x9c, 0x40})
 
-	n, _, err2 := envelope_body_read_short(buf[:])
+	n, _, err2 := message_read_short(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 	testing.expect_value(t, n, 40000)
 }
 
 @(test)
-test_envelope_body_string :: proc(t: ^testing.T) {
+test_message_string :: proc(t: ^testing.T) {
 	// [string]
 
 	buf := [dynamic]byte{}
@@ -199,17 +199,17 @@ test_envelope_body_string :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_string(&buf, "hello")
+	err := message_append_string(&buf, "hello")
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	str, _, err2 := envelope_body_read_string(buf[:])
+	str, _, err2 := message_read_string(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 	testing.expect_value(t, str, "hello")
 }
 
 @(test)
-test_envelope_body_long_string :: proc(t: ^testing.T) {
+test_message_long_string :: proc(t: ^testing.T) {
 	// [long string]
 
 	buf := [dynamic]byte{}
@@ -222,17 +222,17 @@ test_envelope_body_long_string :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_long_string(&buf, "hello")
+	err := message_append_long_string(&buf, "hello")
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	str, _, err2 := envelope_body_read_long_string(buf[:])
+	str, _, err2 := message_read_long_string(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 	testing.expect_value(t, str, "hello")
 }
 
 @(test)
-test_envelope_body_uuid :: proc(t: ^testing.T) {
+test_message_uuid :: proc(t: ^testing.T) {
 	// [uuid]
 
 	buf := [dynamic]byte{}
@@ -250,17 +250,17 @@ test_envelope_body_uuid :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_uuid(&buf, exp_uuid)
+	err := message_append_uuid(&buf, exp_uuid)
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	uuid, _, err2 := envelope_body_read_uuid(buf[:])
+	uuid, _, err2 := message_read_uuid(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 	testing.expect_value(t, uuid, exp_uuid)
 }
 
 @(test)
-test_envelope_body_string_list :: proc(t: ^testing.T) {
+test_message_string_list :: proc(t: ^testing.T) {
 	// [string list]
 
 	buf := [dynamic]byte{}
@@ -279,18 +279,18 @@ test_envelope_body_string_list :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_string_list(&buf, exp)
+	err := message_append_string_list(&buf, exp)
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	list, _, err2 := envelope_body_read_string_list(buf[:])
+	list, _, err2 := message_read_string_list(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	expect_equal_slices(t, list, exp)
 }
 
 @(test)
-test_envelope_body_bytes :: proc(t: ^testing.T) {
+test_message_bytes :: proc(t: ^testing.T) {
 	// [bytes] - with data
 	{
 		buf := [dynamic]byte{}
@@ -306,11 +306,11 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 
 		//
 
-		err := envelope_body_append_bytes(&buf, exp)
+		err := message_append_bytes(&buf, exp)
 		testing.expectf(t, err == nil, "got error: %v", err)
 		expect_equal_slices(t, buf[:], exp_buf[:])
 
-		bytes, _, err2 := envelope_body_read_bytes(buf[:])
+		bytes, _, err2 := message_read_bytes(buf[:])
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 		expect_equal_slices(t, bytes, exp)
@@ -323,18 +323,18 @@ test_envelope_body_bytes :: proc(t: ^testing.T) {
 
 		//
 
-		err := envelope_body_append_null_bytes(&buf)
+		err := message_append_null_bytes(&buf)
 		testing.expectf(t, err == nil, "got error: %v", err)
 		expect_equal_slices(t, buf[:], []byte{0xff, 0xff, 0xff, 0xff})
 
-		bytes, _, err2 := envelope_body_read_bytes(buf[:])
+		bytes, _, err2 := message_read_bytes(buf[:])
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 		testing.expect(t, len(bytes) == 0, "bytes not null")
 	}
 }
 
 @(test)
-test_envelope_body_value :: proc(t: ^testing.T) {
+test_message_value :: proc(t: ^testing.T) {
 	// [value] - with data
 	{
 		buf := [dynamic]byte{}
@@ -346,7 +346,7 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 		append(&exp_buf, 0x00, 0x00, 0x00, 0x04)
 		append(&exp_buf, 0xde, 0xad, 0xbe, 0xef)
 
-		err := envelope_body_append_value(&buf, Data_Value([]byte{0xde, 0xad, 0xbe, 0xef}))
+		err := message_append_value(&buf, Data_Value([]byte{0xde, 0xad, 0xbe, 0xef}))
 		testing.expectf(t, err == nil, "got error: %v", err)
 
 		expect_equal_slices(t, buf[:], exp_buf[:])
@@ -357,12 +357,12 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 		buf := [dynamic]byte{}
 		defer delete(buf)
 
-		err := envelope_body_append_value(&buf, Null_Value{})
+		err := message_append_value(&buf, Null_Value{})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
 		expect_equal_slices(t, buf[:], []byte{0xff, 0xff, 0xff, 0xff})
 
-		value, _, err2 := envelope_body_read_value(buf[:])
+		value, _, err2 := message_read_value(buf[:])
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 		_, ok := value.(Null_Value)
@@ -374,12 +374,12 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 		buf := [dynamic]byte{}
 		defer delete(buf)
 
-		err := envelope_body_append_value(&buf, Not_Set_Value{})
+		err := message_append_value(&buf, Not_Set_Value{})
 		testing.expectf(t, err == nil, "got error: %v", err)
 
 		expect_equal_slices(t, buf[:], []byte{0xff, 0xff, 0xff, 0xfe})
 
-		value, _, err2 := envelope_body_read_value(buf[:])
+		value, _, err2 := message_read_value(buf[:])
 		testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 		_, ok := value.(Not_Set_Value)
@@ -388,7 +388,7 @@ test_envelope_body_value :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_envelope_body_short_bytes :: proc(t: ^testing.T) {
+test_message_short_bytes :: proc(t: ^testing.T) {
 	// [short bytes]
 
 	buf := [dynamic]byte{}
@@ -404,17 +404,17 @@ test_envelope_body_short_bytes :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_short_bytes(&buf, exp)
+	err := message_append_short_bytes(&buf, exp)
 	testing.expectf(t, err == nil, "got error: %v", err)
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	bytes, _, err2 := envelope_body_read_short_bytes(buf[:])
+	bytes, _, err2 := message_read_short_bytes(buf[:])
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 	expect_equal_slices(t, bytes, exp)
 }
 
 @(test)
-test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
+test_message_unsigned_vint :: proc(t: ^testing.T) {
 	// [unsigned vint]
 
 	buf := [dynamic]byte{}
@@ -429,32 +429,32 @@ test_envelope_body_unsigned_vint :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_unsigned_vint(&buf, u64(282240))
+	err := message_append_unsigned_vint(&buf, u64(282240))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
-	err2 := envelope_body_append_unsigned_vint(&buf, u32(140022))
+	err2 := message_append_unsigned_vint(&buf, u32(140022))
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
-	err3 := envelope_body_append_unsigned_vint(&buf, u16(24450))
+	err3 := message_append_unsigned_vint(&buf, u16(24450))
 	testing.expectf(t, err3 == nil, "got error: %v", err3)
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
 
-	n, new_buf, err4 := envelope_body_read_unsigned_vint(buf[:])
+	n, new_buf, err4 := message_read_unsigned_vint(buf[:])
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
 	testing.expect_value(t, n, u64(282240))
 
-	n, new_buf, err4 = envelope_body_read_unsigned_vint(new_buf)
+	n, new_buf, err4 = message_read_unsigned_vint(new_buf)
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
 	testing.expect_value(t, n, u64(140022))
 
-	n, new_buf, err4 = envelope_body_read_unsigned_vint(new_buf)
+	n, new_buf, err4 = message_read_unsigned_vint(new_buf)
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
 	testing.expect_value(t, n, u64(24450))
 }
 
 @(test)
-test_envelope_body_vint :: proc(t: ^testing.T) {
+test_message_vint :: proc(t: ^testing.T) {
 	// [vint]
 
 	buf := [dynamic]byte{}
@@ -470,23 +470,23 @@ test_envelope_body_vint :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_vint(&buf, i64(282240))
+	err := message_append_vint(&buf, i64(282240))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
-	err2 := envelope_body_append_vint(&buf, i64(-2400))
+	err2 := message_append_vint(&buf, i64(-2400))
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
-	err3 := envelope_body_append_vint(&buf, i32(-38000))
+	err3 := message_append_vint(&buf, i32(-38000))
 	testing.expectf(t, err3 == nil, "got error: %v", err3)
 
-	err4 := envelope_body_append_vint(&buf, i32(80000000))
+	err4 := message_append_vint(&buf, i32(80000000))
 	testing.expectf(t, err4 == nil, "got error: %v", err4)
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
-test_envelope_body_inet :: proc(t: ^testing.T) {
+test_message_inet :: proc(t: ^testing.T) {
 	// [inet]
 
 	buf := [dynamic]byte{}
@@ -508,17 +508,17 @@ test_envelope_body_inet :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_inet(&buf, net.IP4_Address{192, 168, 1, 1}, i32(24000))
+	err := message_append_inet(&buf, net.IP4_Address{192, 168, 1, 1}, i32(24000))
 	testing.expectf(t, err == nil, "got error: %v", err)
 
-	err2 := envelope_body_append_inet(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001}, i32(24000))
+	err2 := message_append_inet(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001}, i32(24000))
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
-test_envelope_body_inetaddr :: proc(t: ^testing.T) {
+test_message_inetaddr :: proc(t: ^testing.T) {
 	// [inetaddr]
 
 	buf := [dynamic]byte{}
@@ -538,23 +538,23 @@ test_envelope_body_inetaddr :: proc(t: ^testing.T) {
 
 	//
 
-	err := envelope_body_append_inetaddr(&buf, net.IP4_Address{192, 168, 1, 1})
+	err := message_append_inetaddr(&buf, net.IP4_Address{192, 168, 1, 1})
 	testing.expectf(t, err == nil, "got error: %v", err)
 
-	err2 := envelope_body_append_inetaddr(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001})
+	err2 := message_append_inetaddr(&buf, net.IP6_Address{0xfe80, 0x0000, 0x0003, 0x0003, 0x0002, 0x0002, 0x0001, 0x0001})
 	testing.expectf(t, err2 == nil, "got error: %v", err2)
 
 	expect_equal_slices(t, buf[:], exp_buf[:])
 }
 
 @(test)
-test_envelope_body_consistency :: proc(t: ^testing.T) {
+test_message_consistency :: proc(t: ^testing.T) {
 	// [consistency]
 
 	buf := [dynamic]byte{}
 	defer delete(buf)
 
-	err := envelope_body_append_consistency(&buf, .LOCAL_QUORUM)
+	err := message_append_consistency(&buf, .LOCAL_QUORUM)
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	expect_equal_slices(t, buf[:], []byte{0x00, 0x06})
@@ -569,7 +569,7 @@ check_map :: proc(t: ^testing.T, got: []byte, exp1: []byte, exp2: []byte, loc :=
 	}
 }
 
-test_envelope_body_string_map :: proc(t: ^testing.T) {
+test_message_string_map :: proc(t: ^testing.T) {
 	// [string map]
 
 	buf := [dynamic]byte{}
@@ -581,7 +581,7 @@ test_envelope_body_string_map :: proc(t: ^testing.T) {
 	m["foo"] = "bar"
 	m["name"] = "Vincent"
 
-	err := envelope_body_append_string_map(&buf, m)
+	err := message_append_string_map(&buf, m)
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	//
@@ -619,7 +619,7 @@ test_envelope_body_string_map :: proc(t: ^testing.T) {
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
 
-test_envelope_body_string_multimap :: proc(t: ^testing.T) {
+test_message_string_multimap :: proc(t: ^testing.T) {
 	// [string multimap]
 
 	buf := [dynamic]byte{}
@@ -631,7 +631,7 @@ test_envelope_body_string_multimap :: proc(t: ^testing.T) {
 	m["foo"] = []string{"he", "lo"}
 	m["names"] = []string{"Vince", "Jose"}
 
-	err := envelope_body_append_string_multimap(&buf, m)
+	err := message_append_string_multimap(&buf, m)
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	//
@@ -681,7 +681,7 @@ test_envelope_body_string_multimap :: proc(t: ^testing.T) {
 	check_map(t, buf[:], exp_buf1[:], exp_buf2[:])
 }
 
-test_envelope_body_bytes_map :: proc(t: ^testing.T) {
+test_message_bytes_map :: proc(t: ^testing.T) {
 	// [bytes map]
 
 	buf := [dynamic]byte{}
@@ -695,7 +695,7 @@ test_envelope_body_bytes_map :: proc(t: ^testing.T) {
 	m["foo"] = BODY{0xde, 0xad}
 	m["name"] = BODY{0xbe, 0xef}
 
-	err := envelope_body_append_bytes_map(&buf, m)
+	err := message_append_bytes_map(&buf, m)
 	testing.expectf(t, err == nil, "got error: %v", err)
 
 	//
