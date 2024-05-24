@@ -1,12 +1,19 @@
-package mio
+package rev
 
-import "core:c"
-import "core:c/libc"
-import "core:log"
-import "core:net"
 import "core:os"
 
-Error :: enum {
+Event_Loop_Op :: enum {
+	Socket,
+	Close,
+	Connect,
+}
+
+Event_Loop_Event :: struct {
+	op:        Event_Loop_Op,
+	user_data: rawptr,
+}
+
+OS_Error :: enum {
 	None = 0,
 	Access_Denied,
 	Invalid_Argument,
@@ -20,7 +27,7 @@ Error :: enum {
 	Unexpected,
 }
 
-os_err_from_errno :: proc(#any_int errno: os.Errno, location := #caller_location) -> Error {
+os_err_from_errno :: proc(#any_int errno: os.Errno, location := #caller_location) -> OS_Error {
 	switch errno {
 	case os.EACCES:
 		return .Access_Denied
@@ -45,4 +52,8 @@ os_err_from_errno :: proc(#any_int errno: os.Errno, location := #caller_location
 
 		return .Unexpected
 	}
+}
+
+Error :: union #shared_nil {
+	OS_Error,
 }

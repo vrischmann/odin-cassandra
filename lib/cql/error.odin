@@ -3,12 +3,12 @@ package cql
 import "base:runtime"
 import "core:io"
 
-import "cassandra:mio"
+import "cassandra:rev"
 
 Error :: union #shared_nil {
 	runtime.Allocator_Error,
 	io.Error,
-	mio.Error,
+	rev.Error,
 	Process_Error,
 	Envelope_Parse_Error,
 	Message_Append_Error,

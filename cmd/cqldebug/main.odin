@@ -9,13 +9,13 @@ import "core:mem"
 import "core:net"
 import "core:os"
 import "core:strings"
-import "core:sys/linux"
 import "core:sys/unix"
 import "core:time"
 
 import "cassandra:cql"
-import "cassandra:mio"
 import "third_party:linenoise"
+
+SIGPIPE :: 13
 
 Cli_Error :: enum {
 	None             = 0,
@@ -24,13 +24,12 @@ Cli_Error :: enum {
 
 Error :: union #shared_nil {
 	runtime.Allocator_Error,
-	mio.Error,
 	cql.Error,
 	Cli_Error,
 }
 
 REPL :: struct {
-	ring:                ^mio.ring,
+	event_loop:          ^Event_Loop,
 	ls:                  linenoise.linenoiseState,
 	ls_buf:              [1024]byte,
 	ls_history_filename: string,
@@ -42,8 +41,8 @@ REPL :: struct {
 	conn:                ^cql.Connection,
 }
 
-repl_init :: proc(repl: ^REPL, history_filename: string, ring: ^mio.ring) -> (err: Error) {
-	repl.ring = ring
+repl_init :: proc(repl: ^REPL, history_filename: string, event_loop: ^Event_Loop) -> (err: Error) {
+	repl.event_loop = event_loop
 	repl.ls_history_filename = history_filename
 
 	repl_linenoise_init(repl)
@@ -196,7 +195,7 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 
 		result, err := cql.process_cqe(conn, cqe)
 		#partial switch e in err {
-		case mio.Error:
+		case rev.OS_Error:
 			#partial switch e {
 			case .Canceled, .Connection_Refused:
 				#partial switch conn.stage {
@@ -318,18 +317,8 @@ main :: proc() {
 	defer log.destroy_file_logger(&logger)
 	context.logger = logger
 
-	// Setup our own context
-	// my_context : MyContext = {}
-	// context.user_ptr = &my_context
-
 	// Setup signal handlers
-	libc.signal(i32(linux.Signal.SIGPIPE), proc "c" (_: i32) {})
-
-	// libc.signal(i32(linux.Signal.SIGTERM), proc "c" (_: i32) {
-	// 	context = runtime.default_context()
-	//
-	// 	my_context := (^MyContext)(context.user_ptr)^
-	// })
+	libc.signal(SIGPIPE, proc "c" (_: i32) {})
 
 	//
 	//
@@ -338,14 +327,13 @@ main :: proc() {
 	history_filename := ".cqldebug.history"
 
 	// Initialization
-	ring: mio.ring = {}
-	if err := mio.ring_init(&ring, 1024); err != nil {
-		log.fatalf("unable to create ring, err: %v", err)
+	event_loop: Event_Loop = {}
+	if err := event_loop_init(&event_loop); err != nil {
+		log.fatalf("unable to initialize event loop, err: %v", err)
 	}
-	defer mio.ring_destroy(&ring)
 
 	repl: REPL = {}
-	if err := repl_init(&repl, history_filename, &ring); err != nil {
+	if err := repl_init(&repl, history_filename, &event_loop); err != nil {
 		log.fatalf("unable to initialize the repl, err: %v", err)
 	}
 	defer repl_destroy(&repl)

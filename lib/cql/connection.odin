@@ -8,7 +8,7 @@ import "core:net"
 import "core:os"
 import "core:time"
 
-import "cassandra:mio"
+import "cassandra:rev"
 
 Connection_Id :: distinct int
 
@@ -36,7 +36,7 @@ Handshake_Stage :: enum {
 
 Connection :: struct {
 	// These fields are mandatory and must be provided by the caller either in [connection_init]
-	ring:                     ^mio.ring,
+	event_loop:               ^rev.Event_Loop,
 	id:                       Connection_Id,
 	endpoint:                 net.Endpoint,
 
@@ -53,9 +53,6 @@ Connection :: struct {
 	closed:                   bool,
 
 	// Low level stuff used to drive io_uring
-	socket:                   os.Socket,
-	sockaddr:                 os.SOCKADDR,
-	timeout:                  mio.kernel_timespec,
 	stage:                    Connection_Stage,
 	buf:                      [dynamic]u8,
 
@@ -66,9 +63,9 @@ Connection :: struct {
 	handshake_stage:          Handshake_Stage,
 }
 
-connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, endpoint: net.Endpoint) -> (err: Error) {
+connection_init :: proc(conn: ^Connection, event_loop: ^rev.Event_Loop, id: Connection_Id, endpoint: net.Endpoint) -> (err: Error) {
 	// Set provided fields
-	conn.ring = ring
+	conn.event_loop = event_loop
 	conn.id = id
 	conn.endpoint = endpoint
 
@@ -96,8 +93,8 @@ connection_init :: proc(conn: ^Connection, ring: ^mio.ring, id: Connection_Id, e
 		domain = os.AF_INET6
 	}
 
-	sqe := mio.ring_socket(conn.ring, domain, os.SOCK_STREAM, 0, 0)
-	sqe.user_data = u64(uintptr(conn))
+	context.user_ptr = conn
+	rev.create_socket(event_loop, domain, os.SOCK_STREAM, 0, 0)
 
 	return nil
 }
