@@ -16,6 +16,7 @@ Connection_Stage :: enum {
 	Invalid = 0,
 	Create_Socket,
 	Connect_To_Endpoint,
+	Idle,
 	Write_Frame,
 	Read_Frame,
 	Graceful_Shutdown,
@@ -107,6 +108,8 @@ connection_destroy :: proc(conn: ^Connection) {
 }
 
 connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Error) {
+	assert(conn.stage == .Idle)
+
 	log.info("prepping graceful shutdown")
 
 	conn.stage = .Graceful_Shutdown
@@ -124,6 +127,14 @@ connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Error) {
 
 	return nil
 }
+
+// connection_query :: proc(conn: ^Connection, query: string, args: ..any) -> (err: Error) {
+// 	log.info("executing query %q with args %v", query, args)
+//
+// 	conn.st
+//
+// 	return nil
+// }
 
 Processing_Result :: enum {
 	Invalid = 0,
@@ -170,6 +181,8 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 
 @(private)
 handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
+	assert(conn.stage == .Create_Socket)
+
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
 	}
@@ -207,6 +220,8 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error
 
 @(private)
 handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
+	assert(conn.stage == .Connect_To_Endpoint)
+
 	if cqe.res != 0 {
 		return mio.os_err_from_errno(-cqe.res)
 	}
@@ -224,6 +239,8 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 
 @(private)
 handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
+	assert(conn.stage == .Write_Frame)
+
 	log.infof("cqe: %v", cqe)
 
 	if cqe.res < 0 {
@@ -260,6 +277,8 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 
 @(private)
 handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Error) {
+	assert(conn.stage == .Read_Frame)
+
 	log.infof("cqe: %v", cqe)
 
 	if cqe.res < 0 {
@@ -316,6 +335,8 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Er
 
 @(private)
 handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
+	assert(conn.stage == .Graceful_Shutdown)
+
 	log.infof("%v", cqe)
 
 	if cqe.res == 0 {
@@ -360,6 +381,7 @@ handle_handshake_STARTUP_written :: proc(conn: ^Connection, envelope: Envelope) 
 	case .READY:
 		fmt.printfln("got READY message")
 		conn.handshake_stage = .Done
+		conn.stage = .Idle
 
 	case .AUTHENTICATE:
 		msg, _ := read_AUTHENTICATE_message(envelope.body) or_return
@@ -368,8 +390,9 @@ handle_handshake_STARTUP_written :: proc(conn: ^Connection, envelope: Envelope) 
 
 	case .ERROR:
 		msg, _ := read_ERROR_message(envelope.body) or_return
-
 		fmt.printfln("got error: %v", msg)
+
+		conn.stage = .Idle
 
 	case:
 		log.errorf("expected a READY or AUTHENTICATE message, got %v", envelope.header.opcode)

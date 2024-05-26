@@ -379,7 +379,21 @@ run_command :: proc(ring: ^mio.ring, args: []string) -> (err: Error) {
 			}
 		}) or_return
 		context.user_ptr = nil
+
+		//
+
+		if runner.conn.handshake_stage == .Done {
+			runner.running = false
+		}
 	}
+
+	// Shutdown
+
+	cql.connection_graceful_shutdown(&runner.conn)
+
+	mio.ring_submit_and_wait(ring, 3, proc(cqe: ^mio.io_uring_cqe) {
+		log.infof("got shutdown cqe: %v", cqe)
+	}) or_return
 
 	cql.connection_destroy(&runner.conn)
 
