@@ -53,6 +53,9 @@ Connection :: struct {
 	// TODO(vincent): maybe don't do this ?
 	closed:                   bool,
 
+	// true when framing has been enabled, after the initial handshake
+	framing:                  bool,
+
 	// Low level stuff used to drive io_uring
 	socket:                   os.Socket,
 	sockaddr:                 os.SOCKADDR,
@@ -128,13 +131,22 @@ connection_graceful_shutdown :: proc(conn: ^Connection) -> (err: Error) {
 	return nil
 }
 
-// connection_query :: proc(conn: ^Connection, query: string, args: ..any) -> (err: Error) {
-// 	log.info("executing query %q with args %v", query, args)
-//
-// 	conn.st
-//
-// 	return nil
-// }
+connection_query :: proc(conn: ^Connection, query: string, bind_parameters: ..any) -> (err: Error) {
+	assert(conn.stage == .Idle)
+	assert(conn.handshake_stage == .Done)
+
+	log.info("executing query %q with bind parameters %v", query, bind_parameters)
+
+	//
+
+	clear(&conn.buf)
+	write_QUERY_message(conn, query, bind_parameters) or_return
+
+	conn.stage = .Write_Frame
+	prep_write_with_timeout(conn, conn.write_timeout)
+
+	return nil
+}
 
 Processing_Result :: enum {
 	Invalid = 0,
@@ -298,7 +310,7 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Er
 
 	#partial switch conn.handshake_stage {
 	case .Done:
-		unimplemented("framing not implemented yet")
+		handle_read(conn, read_data) or_return
 	case:
 		handle_read_in_handshake(conn, read_data) or_return
 	}
@@ -423,6 +435,14 @@ handle_read_in_handshake :: proc(conn: ^Connection, data: []byte) -> (err: Error
 	return nil
 }
 
+@(private)
+handle_read :: proc(conn: ^Connection, data: []byte) -> (err: Error) {
+	unimplemented("handle_read not implemented")
+}
+
+//
+//
+//
 
 @(private)
 prep_connect_with_timeout :: proc(conn: ^Connection, timeout: time.Duration) {
@@ -489,6 +509,26 @@ write_STARTUP_message :: proc(conn: ^Connection, supported_options: map[string][
 	options_hdr.flags = 0
 	options_hdr.stream = conn.stream
 	options_hdr.opcode = .STARTUP
+	options_hdr.length = u32(len(tmp_buf))
+
+	envelope_append(&conn.buf, options_hdr, tmp_buf[:]) or_return
+
+	return nil
+}
+
+@(private)
+write_QUERY_message :: proc(conn: ^Connection, query: string, bind_parameters: ..any) -> (err: Error) {
+	tmp_buf := make([dynamic]byte, allocator = context.temp_allocator)
+
+	message_append_string(&tmp_buf, query) or_return
+
+	//
+
+	options_hdr: EnvelopeHeader = {}
+	options_hdr.version = .V5
+	options_hdr.flags = 0
+	options_hdr.stream = conn.stream
+	options_hdr.opcode = .QUERY
 	options_hdr.length = u32(len(tmp_buf))
 
 	envelope_append(&conn.buf, options_hdr, tmp_buf[:]) or_return

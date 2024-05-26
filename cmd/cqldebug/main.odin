@@ -360,11 +360,18 @@ run_command :: proc(ring: ^mio.ring, args: []string) -> (err: Error) {
 		return
 	}
 
+	query := args[1]
+	bind_parameters := args[2:]
+
+	//
+
 	runner: Command_Runner = {}
 	runner.running = true
 	cql.connection_init(&runner.conn, ring, 1, endpoint) or_return
 
 	nr_wait := 1
+
+	// Handshake then query
 
 	for runner.running {
 		context.user_ptr = &runner
@@ -383,7 +390,7 @@ run_command :: proc(ring: ^mio.ring, args: []string) -> (err: Error) {
 		//
 
 		if runner.conn.handshake_stage == .Done {
-			runner.running = false
+			cql.connection_query(&runner.conn, query, bind_parameters)
 		}
 	}
 
@@ -478,7 +485,7 @@ main :: proc() {
 			log.fatalf("unable to run, err: %v", err)
 		}
 	} else {
-		args = []string{"127.0.0.1:9042"}
+		// args = []string{"127.0.0.1:9042"}
 
 		if err := run_command(&ring, args); err != nil {
 			log.fatalf("unable to run command, err: %v", err)
