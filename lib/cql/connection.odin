@@ -57,7 +57,7 @@ Connection :: struct {
 	sockaddr:                 os.SOCKADDR,
 	timeout:                  mio.kernel_timespec,
 	stage:                    Connection_Stage,
-	buf:                      [dynamic]u8,
+	buf:                      [dynamic]byte,
 
 	// TODO(vincent): handle multiple streams
 	stream:                   u16,
@@ -170,8 +170,6 @@ process_cqe :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (res: Processi
 
 @(private)
 handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
-	log.infof("%v", cqe)
-
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
 	}
@@ -209,8 +207,6 @@ handle_create_socket :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error
 
 @(private)
 handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
-	log.infof("%v", cqe)
-
 	if cqe.res != 0 {
 		return mio.os_err_from_errno(-cqe.res)
 	}
@@ -228,7 +224,7 @@ handle_connect_to_endpoint :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) ->
 
 @(private)
 handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
-	log.infof("%v", cqe)
+	log.infof("cqe: %v", cqe)
 
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
@@ -264,7 +260,7 @@ handle_write_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> Error {
 
 @(private)
 handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Error) {
-	log.infof("%v", cqe)
+	log.infof("cqe: %v", cqe)
 
 	if cqe.res < 0 {
 		return mio.os_err_from_errno(-cqe.res)
@@ -287,8 +283,6 @@ handle_read_frame :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> (err: Er
 	case:
 		handle_read_in_handshake(conn, read_data) or_return
 	}
-
-	clear(&conn.buf)
 
 	return nil
 }
@@ -336,15 +330,52 @@ handle_graceful_shutdown :: proc(conn: ^Connection, cqe: ^mio.io_uring_cqe) -> E
 }
 
 @(private)
-handle_write_options :: proc(conn: ^Connection, envelope: Envelope) -> (err: Error) {
+handle_handshake_OPTIONS_written :: proc(conn: ^Connection, envelope: Envelope) -> (err: Error) {
 	if envelope.header.opcode != Opcode.SUPPORTED {
 		log.errorf("expected a SUPPORTED message, got %v", envelope.header.opcode)
 		return .Invalid_Response
 	}
 
 	msg, _ := read_SUPPORTED_message(envelope.body) or_return
+	defer delete(msg.options)
 
 	fmt.printfln("supported: %v", msg)
+
+	//
+
+	conn.handshake_stage = .Write_STARTUP
+	clear(&conn.buf)
+	write_STARTUP_message(conn, msg.options)
+
+	conn.stage = .Write_Frame
+	prep_write_with_timeout(conn, conn.write_timeout)
+
+	return nil
+}
+
+@(private)
+handle_handshake_STARTUP_written :: proc(conn: ^Connection, envelope: Envelope) -> (err: Error) {
+
+	#partial switch envelope.header.opcode {
+	case .READY:
+		fmt.printfln("got READY message")
+		conn.handshake_stage = .Done
+
+	case .AUTHENTICATE:
+		msg, _ := read_AUTHENTICATE_message(envelope.body) or_return
+
+		fmt.printfln("authenticator to use: %s", msg.authenticator)
+
+	case .ERROR:
+		msg, _ := read_ERROR_message(envelope.body) or_return
+
+		fmt.printfln("got error: %v", msg)
+
+	case:
+		log.errorf("expected a READY or AUTHENTICATE message, got %v", envelope.header.opcode)
+
+		return .Invalid_Response
+	}
 
 	return nil
 }
@@ -353,13 +384,11 @@ handle_write_options :: proc(conn: ^Connection, envelope: Envelope) -> (err: Err
 handle_read_in_handshake :: proc(conn: ^Connection, data: []byte) -> (err: Error) {
 	envelope := parse_envelope(data) or_return
 
-
 	#partial switch conn.handshake_stage {
 	case .Write_OPTIONS:
-		handle_write_options(conn, envelope) or_return
+		handle_handshake_OPTIONS_written(conn, envelope) or_return
 	case .Write_STARTUP:
-		unimplemented("Write_STARTUP")
-
+		handle_handshake_STARTUP_written(conn, envelope) or_return
 	case .Write_AUTH_RESPONSE:
 		unimplemented("Write_AUTH_RESPONSE")
 
@@ -381,7 +410,7 @@ prep_connect_with_timeout :: proc(conn: ^Connection, timeout: time.Duration) {
 	sqe.user_data = u64(uintptr(conn))
 
 	conn.timeout = {}
-	conn.timeout.tv_nsec = i64(1 * time.Second)
+	conn.timeout.tv_nsec = i64(timeout)
 
 	timeout_sqe := mio.ring_link_timeout(conn.ring, &conn.timeout)
 	timeout_sqe.user_data = 20
@@ -418,6 +447,33 @@ write_OPTIONS_message :: proc(conn: ^Connection) -> (err: Error) {
 }
 
 @(private)
+write_STARTUP_message :: proc(conn: ^Connection, supported_options: map[string][]string) -> (err: Error) {
+	body := make(map[string]string, allocator = context.temp_allocator)
+	defer delete(body)
+
+	body["CQL_VERSION"] = "3.0.0"
+	body["DRIVER_NAME"] = "odin-cassandra"
+	body["DRIVER_VERSION"] = "0.0.1"
+
+	tmp_buf := make([dynamic]byte, allocator = context.temp_allocator)
+
+	message_append_string_map(&tmp_buf, body) or_return
+
+	//
+
+	options_hdr: EnvelopeHeader = {}
+	options_hdr.version = .V5
+	options_hdr.flags = 0
+	options_hdr.stream = conn.stream
+	options_hdr.opcode = .STARTUP
+	options_hdr.length = u32(len(tmp_buf))
+
+	envelope_append(&conn.buf, options_hdr, tmp_buf[:]) or_return
+
+	return nil
+}
+
+@(private)
 SUPPORTED :: struct {
 	options: map[string][]string,
 }
@@ -427,6 +483,36 @@ read_SUPPORTED_message :: proc(body: EnvelopeBody, allocator := context.temp_all
 	// TODO(vincent): think about allocations
 
 	res.options, new_buf = message_read_string_multimap(transmute([]byte)body, allocator = allocator) or_return
+
+	return
+}
+
+@(private)
+AUTHENTICATE :: struct {
+	authenticator: string,
+}
+
+@(private)
+read_AUTHENTICATE_message :: proc(body: EnvelopeBody) -> (res: AUTHENTICATE, new_buf: []byte, err: Error) {
+	res.authenticator, new_buf = message_read_string(transmute([]byte)body) or_return
+
+	return
+}
+
+ERROR_code :: enum {
+	None           = 0,
+	Protocol_Error = 0x000A,
+}
+
+@(private)
+ERROR :: struct {
+	code:    i32,
+	message: string,
+}
+
+read_ERROR_message :: proc(body: EnvelopeBody) -> (res: ERROR, new_buf: []byte, err: Error) {
+	res.code, new_buf = message_read_int(transmute([]byte)body) or_return
+	res.message, new_buf = message_read_string(new_buf) or_return
 
 	return
 }

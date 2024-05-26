@@ -163,7 +163,12 @@ ring_submit_and_wait :: proc(ring: ^ring, #any_int nr_wait: int, process_cqe_cal
 	cqes: [CQES]^io_uring_cqe = {}
 
 	count := peek_batch_cqe(&ring.underlying, &cqes[0], CQES)
+
+	log.infof("got cqes: %v", cqes[:count])
+
 	for cqe in cqes[:count] {
+		log.infof("processing cqe %v", cqe)
+
 		process_cqe_callback(cqe)
 	}
 

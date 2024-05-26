@@ -194,6 +194,9 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 
 		// TODO(vincent): this is ugly as hell but seems like the more straightforward way to handle errors
 
+		log.infof("cqe: %v, conn buf: %v", cqe, conn.buf)
+
+
 		result, err := cql.process_cqe(conn, cqe)
 		#partial switch e in err {
 		case mio.Error:
@@ -235,6 +238,7 @@ repl_process_cqe :: proc(repl: ^REPL, cqe: ^mio.io_uring_cqe) -> (err: Error) {
 
 repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	issue_stdin_poll := true
+
 	for repl.running {
 		// Issue a multishot poll on stdin if necessary
 		if issue_stdin_poll {
@@ -263,6 +267,7 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 		}) or_return
 		context.user_ptr = nil
 
+
 		// Reap closed connections.
 		//
 		// Connections can be closed for a number of reasons; the remote endpoint is not available or closed its connection,
@@ -278,6 +283,107 @@ repl_run :: proc(repl: ^REPL) -> (err: Error) {
 	fmt.println("stopped")
 
 	return nil
+}
+
+run_command_process_cqe :: proc(cqe: ^mio.io_uring_cqe) -> (err: Error) {
+	switch cqe.user_data {
+	case 1:
+		unimplemented("can't read from stdin in command mode")
+
+	case 100, 20:
+	// Expected; on some SQE we don't use the connection pointer because it's not absolutely necessary
+	//
+	// We could simply use 0 and don't log anything but while working on this code I want to be able to see when I let 0 by mistake
+
+	case 0:
+		log.warnf("got cqe without user data: %v, res as errno: %v", cqe, mio.os_err_from_errno(os.Errno(-cqe.res)))
+
+	case:
+		conn := (^cql.Connection)(uintptr(cqe.user_data))
+
+		// log.debugf("got cqe %v for conn %v", cqe, conn)
+
+		// TODO(vincent): this is ugly as hell but seems like the more straightforward way to handle errors
+
+		result, err := cql.process_cqe(conn, cqe)
+		#partial switch e in err {
+		case mio.Error:
+			#partial switch e {
+			case .Canceled, .Connection_Refused:
+				#partial switch conn.stage {
+				case .Connect_To_Endpoint:
+					fmt.eprintfln(
+						"\x1b[1m\x1b[31munable to connect to endpoint %v: %v\x1b[0m\x1b[22m",
+						net.endpoint_to_string(conn.endpoint),
+						err,
+					)
+				}
+
+				cql.connection_graceful_shutdown(conn) or_return
+
+			case:
+				return err
+			}
+
+		case nil:
+			#partial switch result {
+			case .Connection_Established:
+				fmt.printfln(
+					"\x1b[1m\x1b[32mconnection to %v established in %v\x1b[0m\x1b[22m",
+					net.endpoint_to_string(conn.endpoint),
+					time.since(conn.connection_attempt_start),
+				)
+			}
+
+		case:
+			return err
+		}
+	}
+
+	return nil
+}
+
+Command_Runner :: struct {
+	running: bool,
+	conn:    cql.Connection,
+}
+
+run_command :: proc(ring: ^mio.ring, args: []string) -> (err: Error) {
+	if len(args) <= 0 {
+		fmt.eprintfln("please provide an endpoint")
+		return
+	}
+
+	endpoint, ok := net.parse_endpoint(args[0])
+	if !ok {
+		fmt.eprintfln("endpoint %v is invalid", args[0])
+		return
+	}
+
+	runner: Command_Runner = {}
+	runner.running = true
+	cql.connection_init(&runner.conn, ring, 1, endpoint) or_return
+
+	nr_wait := 1
+
+	for runner.running {
+		context.user_ptr = &runner
+		mio.ring_submit_and_wait(ring, nr_wait, proc(cqe: ^mio.io_uring_cqe) {
+			runner := (^Command_Runner)(context.user_ptr)
+
+			err := run_command_process_cqe(cqe)
+			if err != nil {
+				fmt.eprintfln("unable to process CQE, err: %v", err)
+				runner.running = false
+				return
+			}
+		}) or_return
+		context.user_ptr = nil
+	}
+
+	cql.connection_destroy(&runner.conn)
+
+	return
 }
 
 main :: proc() {
@@ -344,14 +450,24 @@ main :: proc() {
 	}
 	defer mio.ring_destroy(&ring)
 
-	repl: REPL = {}
-	if err := repl_init(&repl, history_filename, &ring); err != nil {
-		log.fatalf("unable to initialize the repl, err: %v", err)
-	}
-	defer repl_destroy(&repl)
+	args := os.args[1:]
 
-	// Run the client
-	if err := repl_run(&repl); err != nil {
-		log.fatalf("unable to run, err: %v", err)
+	if len(args) > 0 && args[0] == "repl" {
+		repl: REPL = {}
+		if err := repl_init(&repl, history_filename, &ring); err != nil {
+			log.fatalf("unable to initialize the repl, err: %v", err)
+		}
+		defer repl_destroy(&repl)
+
+		// Run the client
+		if err := repl_run(&repl); err != nil {
+			log.fatalf("unable to run, err: %v", err)
+		}
+	} else {
+		args = []string{"127.0.0.1:9042"}
+
+		if err := run_command(&ring, args); err != nil {
+			log.fatalf("unable to run command, err: %v", err)
+		}
 	}
 }
